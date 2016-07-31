@@ -67,6 +67,7 @@ IF( NOT VSP_NO_GRAPHICS )
     viewerscreens
     ${FLTK_LIBRARIES}
     ${OPENGL_LIBRARIES}
+    ${RHEL_LIBRARIES}
   )
 
   INSTALL( TARGETS vspviewer RUNTIME DESTINATION . )

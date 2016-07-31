@@ -1,4 +1,5 @@
 CMAKE_MINIMUM_REQUIRED( VERSION 2.8 )
+SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fPIC")
 
 IF( WIN32 )
 #	SET( FLTK_PATCH PATCH_COMMAND patch -p1 --binary < ${CMAKE_SOURCE_DIR}/0003-Update-built-in-JPEG-CMake-to-install-headers.patch )
