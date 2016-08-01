@@ -45,8 +45,7 @@ else()
 		--without-iconv
 		--without-zlib
 		--without-lzma
-		--disable-shared
-		"CFLAGS=-g -fPIC"
+		--with-pic
   )
   set(libxml2_build_command "")
   set(libxml2_install_command "")
