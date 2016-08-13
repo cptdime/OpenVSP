@@ -28,6 +28,7 @@ INCLUDE_DIRECTORIES(
 ADD_LIBRARY(gui_and_draw
 AdvLinkScreen.cpp
 BlankScreen.cpp
+BEMOptionsScreen.cpp
 CfdMeshScreen.cpp
 ClippingScreen.cpp
 CompGeomScreen.cpp
@@ -62,6 +63,7 @@ ParmScreen.cpp
 PickSetScreen.cpp
 PodScreen.cpp
 ProjectionScreen.cpp
+PropScreen.cpp
 PSliceScreen.cpp
 PtCloudScreen.cpp
 ScreenBase.cpp
@@ -84,6 +86,7 @@ WaveDragScreen.cpp
 WingScreen.cpp
 AdvLinkScreen.h
 BlankScreen.h
+BEMOptionsScreen.h
 CfdMeshScreen.h
 ClippingScreen.h
 CompGeomScreen.h
@@ -118,6 +121,7 @@ ParmScreen.h
 PickSetScreen.h
 PodScreen.h
 ProjectionScreen.h
+PropScreen.h
 PSliceScreen.h
 PtCloudScreen.h
 ScreenBase.h

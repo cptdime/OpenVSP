@@ -47,6 +47,7 @@ enum XSEC_TYPE { XSEC_FUSE,
                  XSEC_STACK,
                  XSEC_WING,
                  XSEC_CUSTOM,
+                 XSEC_PROP,
                  XSEC_NUM_TYPES
                };
 
@@ -117,7 +118,8 @@ enum IMPORT_TYPE {  IMPORT_STL,
                     IMPORT_CART3D_TRI,
                     IMPORT_XSEC_MESH,
                     IMPORT_PTS,
-                    IMPORT_V2
+                    IMPORT_V2,
+                    IMPORT_BEM
                  };
 
 enum EXPORT_TYPE {  EXPORT_FELISA,
@@ -133,7 +135,8 @@ enum EXPORT_TYPE {  EXPORT_FELISA,
                     EXPORT_X3D,
                     EXPORT_STEP,
                     EXPORT_PLOT3D,
-                    EXPORT_IGES
+                    EXPORT_IGES,
+                    EXPORT_BEM
                  };
 
 enum COMPUTATION_FILE_TYPE  {   NO_FILE_TYPE        = 0,
@@ -229,6 +232,7 @@ enum XDDM_QUANTITY_TYPE { XDDM_VAR,
 enum VSP_SURF_TYPE { NORMAL_SURF,
                      WING_SURF,
                      DISK_SURF,
+                     PROP_SURF,
                      NUM_SURF_TYPES,
                };
 
@@ -293,6 +297,19 @@ enum PROJ_DIR_TYPE { X_PROJ,
                      VEC_PROJ,
                      NUM_PROJ_DIR_OPTIONS
                    };
+
+enum PCURV_TYPE { LINEAR,
+                  PCHIP,
+                  CEDIT,
+                  NUM_PCURV_TYPE
+                };
+
+enum PROP_PCURVE { PROP_CHORD,
+                   PROP_TWIST,
+                   PROP_RAKE,
+                   PROP_SKEW,
+                   NUM_PROP_PCURVE
+                 };
 
 }   // Namespace
 

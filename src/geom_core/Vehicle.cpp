@@ -14,6 +14,7 @@
 #include "StackGeom.h"
 #include "CustomGeom.h"
 #include "PtCloudGeom.h"
+#include "PropGeom.h"
 #include "ScriptMgr.h"
 #include "MessageMgr.h"
 #include "StlHelper.h"
@@ -129,6 +130,7 @@ void Vehicle::Init()
     m_GeomTypeVec.push_back( GeomType( MS_WING_GEOM_TYPE, "WING", true ) );
     m_GeomTypeVec.push_back( GeomType( STACK_GEOM_TYPE, "STACK", true ) );
     m_GeomTypeVec.push_back( GeomType( BLANK_GEOM_TYPE, "BLANK", true ) );
+    m_GeomTypeVec.push_back( GeomType( PROP_GEOM_TYPE, "PROP", true ) );
 
     //==== Get Custom Geom Types =====//
     vector< GeomType > custom_types = CustomGeomMgr.GetCustomTypes();
@@ -163,6 +165,8 @@ void Vehicle::Init()
     m_IGESToCubicTol.Set( 1e-6 );
 
     m_STLMultiSolid.Set( false );
+
+    m_BEMPropID = string();
 
     m_UpdatingBBox = false;
     m_BbXLen.Set( 0 );
@@ -208,6 +212,8 @@ void Vehicle::Wype()
     m_Name = string();
 
     m_VSP3FileName = string();
+
+    m_BEMPropID = string();
 
     for ( int i = 0 ; i < ( int )m_GeomStoreVec.size() ; i++ )
     {
@@ -410,6 +416,10 @@ string Vehicle::CreateGeom( const GeomType & type )
     else if ( type.m_Type == PT_CLOUD_GEOM_TYPE )
     {
         new_geom = new PtCloudGeom( this );
+    }
+    else if ( type.m_Type == PROP_GEOM_TYPE )
+    {
+        new_geom = new PropGeom( this );
     }
 
     if ( !new_geom )
@@ -2239,6 +2249,23 @@ void Vehicle::WriteIGESFile( const string & file_name, int write_set )
     model.Write( file_name.c_str(), true );
 }
 
+void Vehicle::WriteBEMFile( const string &file_name, int write_set )
+{
+    Geom* geom = FindGeom( m_BEMPropID );
+
+    PropGeom* pgeom = dynamic_cast < PropGeom* > ( geom );
+    if ( pgeom )
+    {
+        string rid = pgeom->BuildBEMResults();
+
+        Results* resptr = ResultsMgr.FindResultsPtr( rid );
+        if( resptr )
+        {
+            resptr->WriteBEMFile( file_name );
+        }
+    }
+}
+
 void Vehicle::AddLinkableContainers( vector< string > & linkable_container_vec )
 {
     ParmContainer::AddLinkableContainers( linkable_container_vec );
@@ -2613,15 +2640,7 @@ string Vehicle::ImportFile( const string & file_name, int file_type )
         PtCloudGeom* new_geom = ( PtCloudGeom* )FindGeom( id );
         if ( new_geom )
         {
-            int validFlag;
-            if ( file_type == IMPORT_PTS )
-            {
-                validFlag = new_geom->ReadPTS( file_name.c_str() );
-            }
-            else
-            {
-                validFlag = 0;
-            }
+            int validFlag = new_geom->ReadPTS( file_name.c_str() );
 
             if ( !validFlag )
             {
@@ -2638,6 +2657,36 @@ string Vehicle::ImportFile( const string & file_name, int file_type )
     else if ( file_type == IMPORT_V2 )
     {
         return ImportV2File( file_name );
+    }
+    else if ( file_type == IMPORT_BEM )
+    {
+        GeomType type = GeomType( PROP_GEOM_TYPE, "PROP", true );
+        id = AddGeom( type );
+        if ( !id.compare( "NONE" ) )
+        {
+            return id;
+        }
+
+        Geom* new_geom = FindGeom( id );
+        if ( new_geom )
+        {
+            PropGeom* prop = dynamic_cast < PropGeom* > (new_geom );
+            if ( prop )
+            {
+                int validFlag = prop->ReadBEM( file_name.c_str() );
+
+                if ( !validFlag )
+                {
+                    DeleteGeom( id );
+                    id = "NONE";
+                }
+                else
+                {
+                    SetActiveGeom( id );
+                    prop->Update();
+                }
+            }
+        }
     }
     else
     {
@@ -2917,6 +2966,10 @@ void Vehicle::ExportFile( const string & file_name, int write_set, int file_type
     else if ( file_type == EXPORT_IGES )
     {
         WriteIGESFile( file_name, write_set );
+    }
+    else if ( file_type == EXPORT_BEM )
+    {
+        WriteBEMFile( file_name, write_set );
     }
 }
 

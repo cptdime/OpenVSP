@@ -55,6 +55,8 @@ void GroupLayout::InitWidthHeightVals()
     m_RangeButtonWidth = 10;
     m_InputWidth = 60;
     m_SliderWidth = 110;
+    m_CanvasWidth = 250;
+    m_CanvasHeight = 250;
 
 }
 
@@ -372,7 +374,7 @@ void GroupLayout::AddSlider( FractParmSlider& slid_adj_input,
 
 
 //==== Create & Init Gui Slider Input  ====//
-void GroupLayout::AddSlider( SliderInput& slider_input, const char* label, double range, const char* format, bool log_slider )
+void GroupLayout::AddSlider( SliderInput& slider_input, const char* label, double range, const char* format, int used_w, bool log_slider )
 {
     assert( m_Group && m_Screen );
 
@@ -382,7 +384,7 @@ void GroupLayout::AddSlider( SliderInput& slider_input, const char* label, doubl
     VspButton* button = AddParmButton( label );
 
     //==== Slider ====//
-    int sw = FitWidth( m_ButtonWidth + m_InputWidth + init_used_w, m_SliderWidth );
+    int sw = FitWidth( m_ButtonWidth + m_InputWidth + init_used_w + used_w, m_SliderWidth );
     Fl_Slider* slider = new Fl_Slider( m_X, m_Y, sw, m_StdHeight );
     slider->type( 5 );
     slider->box( FL_THIN_DOWN_BOX );
@@ -1438,6 +1440,104 @@ void GroupLayout::AddGeomPicker( GeomPicker & geom_picker, int used_w )
     NewLineX();
 
     geom_picker.Init( m_Screen, geom_choice );
+}
+
+//==== Add Curve Editor ====//
+void GroupLayout::AddPCurveEditor( PCurveEditor & curve_editor )
+{
+    assert( m_Group && m_Screen );
+
+    SetSameLineFlag( true );
+
+    AddOutput( curve_editor.m_CurveType, "Type", GetW()/2 );
+
+    Fl_Button* convbutton = new Fl_Button( m_X, m_Y, m_ButtonWidth, m_StdHeight, "Convert" );
+    convbutton->labelfont( 1 );
+    convbutton->labelsize( 12 );
+    convbutton->labelcolor( FL_DARK_BLUE );
+    convbutton->copy_label( "Convert to:" );
+    m_Group->add( convbutton );
+    AddX( m_ButtonWidth );
+
+
+    curve_editor.m_ConvertChoice.AddItem( "Linear" );
+    curve_editor.m_ConvertChoice.AddItem( "Spline (PCHIP)" );
+    curve_editor.m_ConvertChoice.AddItem( "Cubic Bezier" );
+
+    m_ChoiceButtonWidth = 0;
+    AddChoice( curve_editor.m_ConvertChoice, "Convert to:", GetW()/2 + m_ButtonWidth );
+
+    AddY( m_StdHeight );
+    NewLineX();
+
+    ForceNewLine();
+    SetSameLineFlag( false );
+
+    AddYGap();
+
+    int canvas_w = FitWidth( 0, m_CanvasWidth ) - 5;
+
+    AddY( 25 );
+    Vsp_Canvas *canvas = AddCanvas( canvas_w, m_CanvasHeight, 0, 1, 0, 1, "", "X", "Y" );
+    AddY( 25 );
+
+    SetFitWidthFlag( false );
+    SetSameLineFlag( true );
+
+    //==== Add Split Button ====//
+    int bw = FitWidth( 0, m_ButtonWidth );
+    Fl_Button* spbutton = new Fl_Button( m_X, m_Y, bw, m_StdHeight, "Split" );
+    spbutton->labelfont( 1 );
+    spbutton->labelsize( 12 );
+    spbutton->labelcolor( FL_DARK_BLUE );
+    spbutton->copy_label( "Split" );
+    m_Group->add( spbutton );
+    AddX( bw );
+
+    SetFitWidthFlag( true );
+    AddSlider( curve_editor.m_SplitPtSlider, "r/R Split", 1, "%3.2f", m_ButtonWidth );
+
+
+    Fl_Light_Button* splitpickbutton = new Fl_Light_Button( m_X, m_Y, m_ButtonWidth, m_StdHeight, "Pick" );
+    splitpickbutton->labelfont( 1 );
+    splitpickbutton->labelsize( 12 );
+    splitpickbutton->align( Fl_Align( 132 | FL_ALIGN_INSIDE ) );
+    splitpickbutton->copy_label( "Pick" );
+    splitpickbutton->labelcolor( FL_DARK_BLUE );
+    m_Group->add( splitpickbutton );
+
+
+    ForceNewLine();
+
+    SetFitWidthFlag( true );
+    SetSameLineFlag( false );
+
+    //==== Add Delete Button ====//
+    bw = FitWidth( 0, m_ButtonWidth );
+    Fl_Light_Button* deletebutton = new Fl_Light_Button( m_X, m_Y, bw, m_StdHeight, "Delete Control Point" );
+    deletebutton->labelfont( 1 );
+    deletebutton->labelsize( 12 );
+    deletebutton->align( Fl_Align( 132 | FL_ALIGN_INSIDE ) );
+    deletebutton->copy_label( "Delete Control Point" );
+    deletebutton->labelcolor( FL_DARK_BLUE );
+    m_Group->add( deletebutton );
+    AddX( bw );
+    AddY( m_StdHeight );
+    NewLineX();
+
+
+    SetSameLineFlag( false );
+
+    AddYGap();
+    AddDividerBox( "Control Points" );
+
+    Fl_Scroll *ptscroll = AddFlScroll( GetRemainY() );
+    ptscroll->type( Fl_Scroll::VERTICAL_ALWAYS );
+    ptscroll->box( FL_BORDER_BOX );
+    GroupLayout *ptlayout = new GroupLayout();
+    ptlayout->SetGroupAndScreen( ptscroll, this->m_Screen );
+
+    curve_editor.Init( m_Screen, canvas, ptscroll, spbutton, convbutton, deletebutton, splitpickbutton, ptlayout );
 }
 
 //==== Add Fl Browser ====//

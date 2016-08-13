@@ -114,10 +114,15 @@ public:
     void SetButtonWidth( int w )        { m_ButtonWidth = w; }
     int GetButtonWidth()                { return m_ButtonWidth; }
     void SetChoiceButtonWidth( int w )  { m_ChoiceButtonWidth = w; }
+    int GetChoiceButtonWidth()          { return m_ChoiceButtonWidth; }
     void SetRangeButtonWidth( int w )   { m_RangeButtonWidth = w; }
     void SetInputWidth( int w )         { m_InputWidth = w; }
     int GetInputWidth()                 { return m_InputWidth; }
     void SetSliderWidth( int w )        { m_SliderWidth = w; }
+    int GetCanvasWidth()                { return m_CanvasWidth; }
+    void SetCanvasWdith( int w )        { m_CanvasWidth = w; }
+    int GetCanvasHeight()               { return m_CanvasHeight; }
+    void SetCanvasHeight( int h )       { m_CanvasHeight = h; }
 
     //==== Add FLTK Widgets and Initalize GUI Devices ====//
     Fl_Box* AddDividerBox( const string& text, int used_w = 0 );
@@ -132,7 +137,7 @@ public:
                      double range, const char* format );
     void AddSlider(  FractParmSlider& slid_adj_input, const char* label,
                      double range, const char* format );
-    void AddSlider( SliderInput & slider_input, const char* label, double range, const char* format, bool log_slider = false );
+    void AddSlider( SliderInput & slider_input, const char* label, double range, const char* format, int used_w = 0, bool log_slider = false );
     void AddButton(  CheckButton& check_button, const char* label );
     void AddButton(  ToggleButton& toggle_button, const char* label );
     void AddButton(  CheckButtonBit& check_bit_button, const char* label, int val );
@@ -156,6 +161,7 @@ public:
     void AddSkinControl( SkinControl & skin_control, const char* label, double range, const char* format );
     void AddSkinHeader( SkinHeader & skin_header );
     void AddGeomPicker( GeomPicker & geom_picker, int used_w = 0 );
+    void AddPCurveEditor( PCurveEditor & curve_editor );
 
     Fl_Browser* AddFlBrowser( int height );
     Fl_Text_Editor* AddFlTextEditor( int height );
@@ -201,6 +207,8 @@ private:
     int m_RangeButtonWidth;
     int m_InputWidth;
     int m_SliderWidth;
+    int m_CanvasWidth;
+    int m_CanvasHeight;
 
     GroupLayout( GroupLayout const& copy );          // Not Implemented
     GroupLayout& operator=( GroupLayout const& copy ); // Not Implemented
