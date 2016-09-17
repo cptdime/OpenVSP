@@ -15,6 +15,7 @@
 #include "CustomGeom.h"
 #include "PtCloudGeom.h"
 #include "PropGeom.h"
+#include "HingeGeom.h"
 #include "ScriptMgr.h"
 #include "MessageMgr.h"
 #include "StlHelper.h"
@@ -26,6 +27,7 @@
 #include "StringUtil.h"
 #include "SubSurfaceMgr.h"
 #include "DesignVarMgr.h"
+#include "DXFUtil.h"
 #include "XmlUtil.h"
 #include "APIDefines.h"
 #include "ResultsMgr.h"
@@ -59,6 +61,18 @@ Vehicle::Vehicle()
     m_IGESToCubic.Init( "ToCubic", "IGESSettings", this, false, 0, 1 );
     m_IGESToCubicTol.Init( "ToCubicTol", "IGESSettings", this, 1e-6, 1e-12, 1e12 );
 
+    m_DXFLenUnit.Init( "LenUnit", "DXFSettings", this, vsp::LEN_FT, vsp::LEN_MM, vsp::LEN_UNITLESS );
+    m_2D3DFlag.Init( "DimFlag", "DXFSettings", this , vsp::SET_3D, vsp::SET_3D, vsp::SET_2D );
+    m_2DView.Init( "ViewType", "DXFSettings", this, vsp::VIEW_1, vsp::VIEW_1, vsp::VIEW_4 );
+    m_4View1.Init( "TopLeftView", "DXFSettings", this, vsp::VIEW_TOP, vsp::VIEW_LEFT, vsp::VIEW_NONE );
+    m_4View2.Init( "TopRightView", "DXFSettings", this, vsp::VIEW_TOP, vsp::VIEW_LEFT, vsp::VIEW_NONE );
+    m_4View3.Init( "BottomLeftView", "DXFSettings", this, vsp::VIEW_TOP, vsp::VIEW_LEFT, vsp::VIEW_NONE );
+    m_4View4.Init( "BottomRightView", "DXFSettings", this, vsp::VIEW_TOP, vsp::VIEW_LEFT, vsp::VIEW_NONE );
+    m_4View1_rot.Init( "TopLeftRotation", "DXFSettings", this, vsp::ROT_90, vsp::ROT_0, vsp::ROT_270 );
+    m_4View2_rot.Init( "TopRightRotation", "DXFSettings", this, vsp::ROT_0, vsp::ROT_0, vsp::ROT_270 );
+    m_4View3_rot.Init( "BottomLeftRotation", "DXFSettings", this, vsp::ROT_0, vsp::ROT_0, vsp::ROT_270 );
+    m_4View4_rot.Init( "BottomRightRotation", "DXFSettings", this, vsp::ROT_0, vsp::ROT_0, vsp::ROT_270 );
+
     m_STLMultiSolid.Init( "MultiSolid", "STLSettings", this, false, 0, 1 );
 
     m_UpdatingBBox = false;
@@ -80,6 +94,11 @@ Vehicle::Vehicle()
     m_exportDegenGeomCsvFile.Init( "DegenGeom_CSV_Export", "ExportFlag", this, true, 0, 1 );
     m_exportDegenGeomMFile.Init( "DegenGeom_M_Export", "ExportFlag", this, true, 0, 1 );
 
+    m_AxisLength.Init( "AxisLength", "Axis", this, 1.0, 1e-12, 1e12 );
+    m_AxisLength.SetDescript( "Length of axis icon displayed on screen" );
+
+    // Initialize the group transformations object
+    m_GroupTransformations.Init( this );
 
     SetupPaths();
 }
@@ -131,6 +150,7 @@ void Vehicle::Init()
     m_GeomTypeVec.push_back( GeomType( STACK_GEOM_TYPE, "STACK", true ) );
     m_GeomTypeVec.push_back( GeomType( BLANK_GEOM_TYPE, "BLANK", true ) );
     m_GeomTypeVec.push_back( GeomType( PROP_GEOM_TYPE, "PROP", true ) );
+    m_GeomTypeVec.push_back( GeomType( HINGE_GEOM_TYPE, "HINGE", true ) );
 
     //==== Get Custom Geom Types =====//
     vector< GeomType > custom_types = CustomGeomMgr.GetCustomTypes();
@@ -163,6 +183,18 @@ void Vehicle::Init()
     m_IGESSplitSurfs.Set( true );
     m_IGESToCubic.Set( false );
     m_IGESToCubicTol.Set( 1e-6 );
+
+    m_DXFLenUnit.Set( vsp::LEN_UNITLESS );
+    m_2DView.Set( vsp::VIEW_4 );
+    m_2D3DFlag.Set( vsp::SET_3D );
+    m_4View1.Set( vsp::VIEW_TOP );
+    m_4View2.Set( vsp::VIEW_NONE );
+    m_4View3.Set( vsp::VIEW_FRONT );
+    m_4View4.Set( vsp::VIEW_LEFT );
+    m_4View1_rot.Set( vsp::ROT_270 );
+    m_4View2_rot.Set( vsp::ROT_0 );
+    m_4View3_rot.Set( vsp::ROT_0 );
+    m_4View4_rot.Set( vsp::ROT_0 );
 
     m_STLMultiSolid.Set( false );
 
@@ -300,6 +332,11 @@ void Vehicle::ParmChanged( Parm* parm_ptr, int type )
     UpdateBBox();
     m_UpdatingBBox = false;
 
+    if ( parm_ptr == &m_AxisLength )
+    {
+        ForceUpdate();
+    }
+
     UpdateGui();
 }
 
@@ -385,45 +422,51 @@ vector< Geom* > Vehicle::FindGeomVec( const vector< string > & geom_id_vec )
 string Vehicle::CreateGeom( const GeomType & type )
 {
     Geom* new_geom = NULL;
-    if ( type.m_Type == POD_GEOM_TYPE )
-    {
-        new_geom = new PodGeom( this );
-    }
-    else if ( type.m_Type == FUSELAGE_GEOM_TYPE )
-    {
-        new_geom = new FuselageGeom( this );
-    }
-    else if ( type.m_Type == MS_WING_GEOM_TYPE )
-    {
-        new_geom = new WingGeom( this );
-    }
-    else if ( type.m_Type == BLANK_GEOM_TYPE )
-    {
-        new_geom = new BlankGeom( this );
-    }
-    else if ( type.m_Type == MESH_GEOM_TYPE )
-    {
-        new_geom = new MeshGeom( this );
-    }
-    else if ( type.m_Type == STACK_GEOM_TYPE )
-    {
-        new_geom = new StackGeom( this );
-    }
-    else if ( type.m_Type == CUSTOM_GEOM_TYPE )
+
+    if ( type.m_Type == CUSTOM_GEOM_TYPE )     // Match Custom on number
     {
         new_geom = new CustomGeom( this );
     }
-    else if ( type.m_Type == PT_CLOUD_GEOM_TYPE )
+    else if ( type.m_Name == "Pod" || type.m_Name == "POD" )   // Match all others on name
+    {
+        new_geom = new PodGeom( this );
+    }
+    else if ( type.m_Name == "Fuselage" || type.m_Name == "FUSELAGE" )
+    {
+        new_geom = new FuselageGeom( this );
+    }
+    else if ( type.m_Name == "Wing" || type.m_Name == "WING" )
+    {
+        new_geom = new WingGeom( this );
+    }
+    else if ( type.m_Name == "Blank" || type.m_Name == "BLANK" )
+    {
+        new_geom = new BlankGeom( this );
+    }
+    else if ( type.m_Name == "Mesh" || type.m_Name == "MESH" )
+    {
+        new_geom = new MeshGeom( this );
+    }
+    else if ( type.m_Name == "Stack" || type.m_Name == "STACK" )
+    {
+        new_geom = new StackGeom( this );
+    }
+    else if ( type.m_Name == "PtCloud" || type.m_Name == "PTS" )
     {
         new_geom = new PtCloudGeom( this );
     }
-    else if ( type.m_Type == PROP_GEOM_TYPE )
+    else if ( type.m_Name == "Propeller" || type.m_Name == "PROP" )
     {
         new_geom = new PropGeom( this );
+    }
+    else if ( type.m_Name == "Hinge" || type.m_Name == "HINGE" )
+    {
+        new_geom = new HingeGeom( this );
     }
 
     if ( !new_geom )
     {
+        printf( "Error: Could not create Geom of type: %s\n", type.m_Name.c_str() );
         return "NONE";
     }
 
@@ -463,6 +506,7 @@ string Vehicle::AddGeom( const GeomType & type )
             CustomGeomMgr.InitGeom( geom_id, type.m_ModuleName );
 //            add_geom->Update();
         }
+        add_geom->Update();
     }
     return geom_id;
 }
@@ -471,12 +515,12 @@ string Vehicle::AddGeom( const GeomType & type )
 //=== Create Geom and Set Up Parent/Child ====//
 string Vehicle::AddGeom( Geom* add_geom )
 {
-    string add_id = add_geom->GetID();
-
     if ( !add_geom )
     {
         return string( "NONE" );
     }
+
+    string add_id = add_geom->GetID();
 
     //==== Set Parent/Child ====//
     vector< string > active_vec = GetActiveGeomVec();
@@ -1634,8 +1678,9 @@ void Vehicle::WriteTaggedMSSTLFile( const string & file_name, int write_set )
 void Vehicle::WriteTRIFile( const string & file_name, int write_set )
 {
     vector< Geom* > geom_vec = FindGeomVec( GetGeomVec( false ) );
-    if ( !geom_vec[0] )
+    if ( geom_vec.size()==0 )
     {
+        printf("WARNING: No geometry to write \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
         return;
     }
 
@@ -1926,7 +1971,7 @@ void Vehicle::WriteX3DFile( const string & file_name, int write_set )
     //==== All Geometry ====//
     for ( int i = 0 ; i < ( int )geom_vec.size() ; i++ )
     {
-        if ( geom_vec[i]->GetSetFlag( write_set ) && geom_vec[i]->GetType().m_Type != BLANK_GEOM_TYPE )
+        if ( geom_vec[i]->GetSetFlag( write_set ) && geom_vec[i]->GetType().m_Type != BLANK_GEOM_TYPE && geom_vec[i]->GetType().m_Type != HINGE_GEOM_TYPE )
         {
             xmlNodePtr shape_node = xmlNewChild( scene_node, NULL, BAD_CAST "Shape", NULL );
 
@@ -2266,6 +2311,35 @@ void Vehicle::WriteBEMFile( const string &file_name, int write_set )
     }
 }
 
+void Vehicle::WriteDXFFile( const string & file_name, int write_set )
+{
+    FILE* dxf_file = fopen( file_name.c_str(), "w" );
+    WriteDXFHeader( dxf_file, m_DXFLenUnit.Get() );
+
+    vector< Geom* > geom_vec = FindGeomVec( GetGeomVec( false ) );
+
+    BndBox dxfbox;
+    for ( int i = 0 ; i < ( int )geom_vec.size() ; i++ )
+    {
+        if ( geom_vec[i]->GetSetFlag( write_set ) )
+        {
+            dxfbox.Update( geom_vec[i]->GetBndBox() );
+        }
+    }
+
+    for ( int i = 0 ; i < ( int )geom_vec.size() ; i++ )
+    {
+        if ( geom_vec[i]->GetSetFlag( write_set ) )
+        {
+            geom_vec[i]->WriteFeatureLinesDXF( dxf_file, dxfbox );
+        }
+    }
+
+    WriteDXFClose( dxf_file );
+
+    fclose( dxf_file );
+}
+
 void Vehicle::AddLinkableContainers( vector< string > & linkable_container_vec )
 {
     ParmContainer::AddLinkableContainers( linkable_container_vec );
@@ -2365,6 +2439,10 @@ string Vehicle::getExportFileName( int type )
     {
         doreturn = true;
     }
+    else if ( type == VSPAERO_PANEL_TRI_TYPE )
+    {
+        doreturn = true;
+    }
 
     if( doreturn )
     {
@@ -2421,6 +2499,10 @@ void Vehicle::setExportFileName( int type, string f_name )
     {
         doset = true;
     }
+    else if ( type == VSPAERO_PANEL_TRI_TYPE )
+    {
+        doset = true;
+    }
 
     if( doset )
     {
@@ -2430,9 +2512,9 @@ void Vehicle::setExportFileName( int type, string f_name )
 
 void Vehicle::resetExportFileNames()
 {
-    const char *suffix[] = {"_CompGeom.txt", "_CompGeom.csv", "_DragBuild.tsv", "_AwaveSlice.txt", "_MassProps.txt", "_DegenGeom.csv", "_DegenGeom.m", "_ProjArea.csv", "_WaveDrag.txt" };
-    const int types[] = { COMP_GEOM_TXT_TYPE, COMP_GEOM_CSV_TYPE, DRAG_BUILD_TSV_TYPE, SLICE_TXT_TYPE, MASS_PROP_TXT_TYPE, DEGEN_GEOM_CSV_TYPE, DEGEN_GEOM_M_TYPE, PROJ_AREA_CSV_TYPE, WAVE_DRAG_TXT_TYPE };
-    const int ntype = 9;
+    const char *suffix[] = {"_CompGeom.txt", "_CompGeom.csv", "_DragBuild.tsv", "_AwaveSlice.txt", "_MassProps.txt", "_DegenGeom.csv", "_DegenGeom.m", "_ProjArea.csv", "_WaveDrag.txt", ".tri" };
+    const int types[] = { COMP_GEOM_TXT_TYPE, COMP_GEOM_CSV_TYPE, DRAG_BUILD_TSV_TYPE, SLICE_TXT_TYPE, MASS_PROP_TXT_TYPE, DEGEN_GEOM_CSV_TYPE, DEGEN_GEOM_M_TYPE, PROJ_AREA_CSV_TYPE, WAVE_DRAG_TXT_TYPE, VSPAERO_PANEL_TRI_TYPE };
+    const int ntype = ( sizeof(types) / sizeof(types[0]) );
     int pos;
 
     for( int i = 0; i < ntype; i++ )
@@ -2534,7 +2616,7 @@ string Vehicle::MassProps( int set, int numSlices, bool hidegeom, bool writefile
                     if ( BGeom->m_PointMassFlag() )
                     {
                         TetraMassProp* pm = new TetraMassProp(); // Deleted by mesh_ptr
-                        pm->SetPointMass( BGeom->m_PointMass(), BGeom->m_Origin );
+                        pm->SetPointMass( BGeom->m_PointMass(), BGeom->m_BlankOrigin );
                         pm->m_CompId = BGeom->GetID();
                         mesh_ptr->AddPointMass( pm );
                     }
@@ -2971,6 +3053,10 @@ void Vehicle::ExportFile( const string & file_name, int write_set, int file_type
     {
         WriteBEMFile( file_name, write_set );
     }
+    else if ( file_type == EXPORT_DXF )
+    {
+        WriteDXFFile( file_name, write_set  );
+    }
 }
 
 void Vehicle::CreateDegenGeom( int set )
@@ -2992,7 +3078,7 @@ void Vehicle::CreateDegenGeom( int set )
                     DegenPtMass pm;
                     pm.name = g->GetName();
                     pm.mass = g->m_PointMass();
-                    pm.x = g->m_Origin;
+                    pm.x = g->m_BlankOrigin;
                     m_DegenPtMassVec.push_back( pm );
                 }
             }
@@ -3054,75 +3140,92 @@ string Vehicle::WriteDegenGeomFile()
         string file_name = getExportFileName( DEGEN_GEOM_CSV_TYPE );
         FILE* file_id = fopen(file_name.c_str(), "w");
 
-        fprintf(file_id, "# DEGENERATE GEOMETRY CSV FILE\n\n");
-        fprintf(file_id, "# NUMBER OF COMPONENTS\n%d\n", geomCnt);
-
-        if ( m_DegenPtMassVec.size() > 0 )
+        if ( !file_id ) // Check if the file was successfully opened
         {
-            fprintf(file_id, "BLANK_GEOMS,%d\n", blankCnt);
-            fprintf(file_id, "# Name, xLoc, yLoc, zLoc, Mass");
+            outStr += "\tFAILED TO OPEN: ";
+            outStr += file_name;
+            outStr += "\n";
+        }
+        else
+        {
+            fprintf(file_id, "# DEGENERATE GEOMETRY CSV FILE\n\n");
+            fprintf(file_id, "# NUMBER OF COMPONENTS\n%d\n", geomCnt);
 
-            for ( int i = 0; i < (int)m_DegenPtMassVec.size(); i++ )
+            if ( m_DegenPtMassVec.size() > 0 )
             {
-                // Blank geom translated location
-                fprintf(file_id, "\n%s,%f,%f,%f,%f", m_DegenPtMassVec[i].name.c_str(), \
-                                                     m_DegenPtMassVec[i].x.v[0], \
-                                                     m_DegenPtMassVec[i].x.v[1], \
-                                                     m_DegenPtMassVec[i].x.v[2], \
-                                                     m_DegenPtMassVec[i].mass );
+                fprintf(file_id, "BLANK_GEOMS,%d\n", blankCnt);
+                fprintf(file_id, "# Name, xLoc, yLoc, zLoc, Mass");
+
+                for ( int i = 0; i < (int)m_DegenPtMassVec.size(); i++ )
+                {
+                    // Blank geom translated location
+                    fprintf(file_id, "\n%s,%f,%f,%f,%f", m_DegenPtMassVec[i].name.c_str(), \
+                                                         m_DegenPtMassVec[i].x.v[0], \
+                                                         m_DegenPtMassVec[i].x.v[1], \
+                                                         m_DegenPtMassVec[i].x.v[2], \
+                                                         m_DegenPtMassVec[i].mass );
+                }
             }
+
+            for ( int i = 0; i < (int)m_DegenGeomVec.size(); i++ )
+            {
+                m_DegenGeomVec[i].write_degenGeomCsv_file( file_id );
+            }
+
+            fclose(file_id);
+
+            outStr += "\t";
+            outStr += file_name;
+            outStr += "\n";
         }
-
-        for ( int i = 0; i < (int)m_DegenGeomVec.size(); i++ )
-        {
-            m_DegenGeomVec[i].write_degenGeomCsv_file( file_id );
-        }
-
-        fclose(file_id);
-
-        outStr += "\t";
-        outStr += file_name;
-        outStr += "\n";
     }
 
     if ( getExportDegenGeomMFile() )
     {
         string file_name = getExportFileName( DEGEN_GEOM_M_TYPE );
         FILE* file_id = fopen(file_name.c_str(), "w");
-
-        fprintf( file_id, "%%-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-%%\n" );
-        fprintf( file_id, "%%-=-=-=-=-=-= DEGENERATE GEOMETRY M FILE =-=-=-=-=-=-=%%\n" );
-        fprintf( file_id, "%%-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-%%\n\n" );
-
-        if ( blankCnt > 0)
+        if ( !file_id )
         {
-            fprintf( file_id, "blankGeom = [];" );
+            outStr += "\tFAILED TO OPEN: ";
+            outStr += file_name;
+            outStr += "\n";
+        }
+        else
+        {
+            fprintf( file_id, "%%-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-%%\n" );
+            fprintf( file_id, "%%-=-=-=-=-=-= DEGENERATE GEOMETRY M FILE =-=-=-=-=-=-=%%\n" );
+            fprintf( file_id, "%%-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-%%\n\n" );
 
-            for ( int i = 0; i < (int)m_DegenPtMassVec.size(); i++ )
+            if ( blankCnt > 0)
             {
-                fprintf( file_id, "\nblankGeom(end+1).name = '%s';", \
-                                 m_DegenPtMassVec[i].name.c_str() );
+                fprintf( file_id, "blankGeom = [];" );
 
-                fprintf( file_id, "\nblankGeom(end).X = [%f, %f, %f];", m_DegenPtMassVec[i].x.v[0],\
-                                                                       m_DegenPtMassVec[i].x.v[1],\
-                                                                       m_DegenPtMassVec[i].x.v[2] );
-                fprintf( file_id, "\nblankGeom(end).mass = %f;", m_DegenPtMassVec[i].mass );
+                for ( int i = 0; i < (int)m_DegenPtMassVec.size(); i++ )
+                {
+                    fprintf( file_id, "\nblankGeom(end+1).name = '%s';", \
+                                     m_DegenPtMassVec[i].name.c_str() );
+
+                    fprintf( file_id, "\nblankGeom(end).X = [%f, %f, %f];", m_DegenPtMassVec[i].x.v[0],\
+                                                                            m_DegenPtMassVec[i].x.v[1],\
+                                                                            m_DegenPtMassVec[i].x.v[2] );
+                    fprintf( file_id, "\nblankGeom(end).mass = %f;", m_DegenPtMassVec[i].mass );
+                }
+                fprintf( file_id, "\n\n" );
             }
-            fprintf( file_id, "\n\n" );
+
+            fprintf(file_id, "degenGeom = [];");
+
+            for ( int i = 0, propIdx = 1; i < (int)m_DegenGeomVec.size(); i++, propIdx++ )
+            {
+                m_DegenGeomVec[i].write_degenGeomM_file(file_id);
+            }
+
+            fclose(file_id);
+
+            outStr += "\t";
+            outStr += file_name;
+            outStr += "\n";
         }
-
-        fprintf(file_id, "degenGeom = [];");
-
-        for ( int i = 0, propIdx = 1; i < (int)m_DegenGeomVec.size(); i++, propIdx++ )
-        {
-            m_DegenGeomVec[i].write_degenGeomM_file(file_id);
-        }
-
-        fclose(file_id);
-
-        outStr += "\t";
-        outStr += file_name;
-        outStr += "\n";
     }
     return outStr;
 }

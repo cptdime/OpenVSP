@@ -363,6 +363,11 @@ void AnalysisMgrSingleton::RegisterBuiltins()
     RegisterAnalysis( "VSPAERODegenGeom", vsadga );
 
 
+    VSPAEROComputeGeometryAnalysis *vsaga = new VSPAEROComputeGeometryAnalysis();
+
+    RegisterAnalysis( "VSPAEROComputeGeometry", vsaga );
+
+
     VSPAEROSinglePointAnalysis *vsaspa = new VSPAEROSinglePointAnalysis();
 
     RegisterAnalysis( "VSPAEROSinglePoint", vsaspa );
@@ -897,12 +902,12 @@ void VSPAERODegenGeomAnalysis::SetDefaults()
     Vehicle *veh = VehicleMgr.GetVehicle();
     if ( veh )
     {
-        m_Inputs.Add( NameValData( "GeomSet", VSPAEROMgr.m_DegenGeomSet.Get() ) );
+        m_Inputs.Add( NameValData( "GeomSet", VSPAEROMgr.m_GeomSet.Get() ) );
     }
     else
     {
         // TODO Throw an error here
-        printf("ERROR - trying to set defaults without a vehicle: void VSPAERODegenGeomAnalysis::SetDefaults()\n");
+        printf("ERROR: trying to set defaults without a vehicle \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
     }
 }
 
@@ -920,21 +925,67 @@ string VSPAERODegenGeomAnalysis::Execute()
         int geomSetOrig;
         if ( nvd )
         {
-            geomSetOrig = VSPAEROMgr.m_DegenGeomSet.Get();
-            VSPAEROMgr.m_DegenGeomSet.Set( nvd->GetInt( 0 ) );
+            geomSetOrig = VSPAEROMgr.m_GeomSet.Get();
+            VSPAEROMgr.m_GeomSet.Set( nvd->GetInt( 0 ) );
         }
 
         // Execute analysis
         res_id = VSPAEROMgr.ComputeGeometry();
 
         //Restore original values that were overwritten by analysis inputs
-        VSPAEROMgr.m_DegenGeomSet.Set( geomSetOrig );
+        VSPAEROMgr.m_GeomSet.Set( geomSetOrig );
 
     }
     
     return res_id;
 }
 
+void VSPAEROComputeGeometryAnalysis::SetDefaults()
+{
+    // the default values use exactly what is setup in the VSPAEROMgr
+    m_Inputs.Clear();
+    Vehicle *veh = VehicleMgr.GetVehicle();
+    if ( veh )
+    {
+        m_Inputs.Add( NameValData( "GeomSet", VSPAEROMgr.m_GeomSet.Get() ) );
+        m_Inputs.Add( NameValData( "AnalysisMethod", VSPAEROMgr.m_AnalysisMethod.Get() ) );
+    }
+    else
+    {
+        // TODO Throw an error here
+        printf("ERROR - trying to set defaults without a vehicle: void VSPAERODegenGeomAnalysis::SetDefaults()\n");
+    }
+}
+
+string VSPAEROComputeGeometryAnalysis::Execute()
+{
+    string resId;
+    Vehicle *veh = VehicleMgr.GetVehicle();
+
+    if ( veh )
+    {
+        NameValData *nvd = NULL;
+
+        //==== Apply current analysis input values ====//
+        int geomSetOrig    = VSPAEROMgr.m_GeomSet.Get();
+        nvd = m_Inputs.FindPtr( "GeomSet", 0 );
+        VSPAEROMgr.m_GeomSet.Set( nvd->GetInt(0) );
+
+        int analysisMethodOrig = VSPAEROMgr.m_AnalysisMethod.Get();
+        nvd = m_Inputs.FindPtr( "AnalysisMethod", 0 );
+        VSPAEROMgr.m_AnalysisMethod.Set( nvd->GetInt( 0 ) );
+
+        //==== Execute Analysis ====//
+        resId = VSPAEROMgr.ComputeGeometry();
+
+        //==== Restore Original Values ====//
+        VSPAEROMgr.m_GeomSet.Set( geomSetOrig );
+        VSPAEROMgr.m_AnalysisMethod.Set( analysisMethodOrig );
+
+    }
+    
+    return resId;
+}
 
 void VSPAEROSinglePointAnalysis::SetDefaults()
 {
@@ -945,12 +996,13 @@ void VSPAEROSinglePointAnalysis::SetDefaults()
     {
 
         //Case Setup
-        m_Inputs.Add( NameValData( "GeomSet",           VSPAEROMgr.m_DegenGeomSet.Get()              ) );
+        m_Inputs.Add( NameValData( "GeomSet",           VSPAEROMgr.m_GeomSet.Get()           ) );
         m_Inputs.Add( NameValData( "NCPU",              VSPAEROMgr.m_NCPU.Get()              ) );
         m_Inputs.Add( NameValData( "WakeNumIter",       VSPAEROMgr.m_WakeNumIter.Get()       ) );
         m_Inputs.Add( NameValData( "WakeAvgStartIter",  VSPAEROMgr.m_WakeAvgStartIter.Get()  ) );
         m_Inputs.Add( NameValData( "WakeSkipUntilIter", VSPAEROMgr.m_WakeSkipUntilIter.Get() ) );
         m_Inputs.Add( NameValData( "StabilityCalcFlag", VSPAEROMgr.m_StabilityCalcFlag.Get() ) );
+        m_Inputs.Add( NameValData( "ForceNewSetupfile", VSPAEROMgr.m_ForceNewSetupfile.Get() ) );
 
         //Reference area, lengths
         m_Inputs.Add( NameValData( "RefFlag",           VSPAEROMgr.m_RefFlag.Get()           ) );
@@ -960,7 +1012,7 @@ void VSPAEROSinglePointAnalysis::SetDefaults()
 
         //Moment center
         //TODO add flag to indentify if this is manual or computed
-        m_Inputs.Add( NameValData( "CGGeomSet",           VSPAEROMgr.m_CGGeomSet.Get()         ) );
+        m_Inputs.Add( NameValData( "CGGeomSet",         VSPAEROMgr.m_CGGeomSet.Get()         ) );
         m_Inputs.Add( NameValData( "NumMassSlice",      VSPAEROMgr.m_NumMassSlice.Get()      ) );
         m_Inputs.Add( NameValData( "Xcg",               VSPAEROMgr.m_Xcg.Get()               ) );
         m_Inputs.Add( NameValData( "Ycg",               VSPAEROMgr.m_Ycg.Get()               ) );
@@ -975,7 +1027,7 @@ void VSPAEROSinglePointAnalysis::SetDefaults()
     else
     {
         // TODO Throw an error here
-        printf("ERROR - trying to set defaults without a vehicle: void VSPAERODegenGeomAnalysis::SetDefaults()\n");
+        printf("ERROR: trying to set defaults without a vehicle \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
     }
 }
 
@@ -991,9 +1043,9 @@ string VSPAEROSinglePointAnalysis::Execute()
 
         //==== Apply current analysis input values ====//
         //    Geometry set
-        int geomSetOrig    = VSPAEROMgr.m_DegenGeomSet.Get();
+        int geomSetOrig    = VSPAEROMgr.m_GeomSet.Get();
         nvd = m_Inputs.FindPtr( "GeomSet", 0 );
-        VSPAEROMgr.m_DegenGeomSet.Set( nvd->GetInt(0) );
+        VSPAEROMgr.m_GeomSet.Set( nvd->GetInt(0) );
 
         //    Regerence area, length parameters
         int refFlagOrig    = VSPAEROMgr.m_RefFlag.Get();
@@ -1028,11 +1080,11 @@ string VSPAEROSinglePointAnalysis::Execute()
 
         //    Freestream parameters (Alpha, Beta, Mach)
         double alphaOrig      = VSPAEROMgr.m_AlphaStart.Get();
-        int    alphaNptsOrig = VSPAEROMgr.m_AlphaNpts.Get();        // note this is NOT an input
+        int    alphaNptsOrig  = VSPAEROMgr.m_AlphaNpts.Get();        // note this is NOT an input
         double betaOrig       = VSPAEROMgr.m_BetaStart.Get();
-        int    betaNptsOrig  = VSPAEROMgr.m_BetaNpts.Get();        // note this is NOT an input
+        int    betaNptsOrig   = VSPAEROMgr.m_BetaNpts.Get();        // note this is NOT an input
         double machOrig       = VSPAEROMgr.m_MachStart.Get();
-        int    machNptsOrig  = VSPAEROMgr.m_MachNpts.Get();        // note this is NOT an input
+        int    machNptsOrig   = VSPAEROMgr.m_MachNpts.Get();        // note this is NOT an input
         nvd = m_Inputs.FindPtr( "Alpha", 0 );
         VSPAEROMgr.m_AlphaStart.Set( nvd->GetDouble(0) );
         VSPAEROMgr.m_AlphaNpts.Set( 1 );                    // note: this is NOT an input
@@ -1048,7 +1100,7 @@ string VSPAEROSinglePointAnalysis::Execute()
         int wakeNumIterOrig          = VSPAEROMgr.m_WakeNumIter.Get();
         int wakeAvgStartIterOrig     = VSPAEROMgr.m_WakeAvgStartIter.Get();
         int wakeSkipUntilIterOrig    = VSPAEROMgr.m_WakeSkipUntilIter.Get();
-        bool stabilityCalcFlagOrig = VSPAEROMgr.m_StabilityCalcFlag.Get(); // note: this is NOT an input
+        bool stabilityCalcFlagOrig   = VSPAEROMgr.m_StabilityCalcFlag.Get();
         nvd = m_Inputs.FindPtr( "NCPU", 0 );
         VSPAEROMgr.m_NCPU.Set( nvd->GetInt(0) );
         nvd = m_Inputs.FindPtr( "WakeNumIter" );
@@ -1060,13 +1112,17 @@ string VSPAEROSinglePointAnalysis::Execute()
         nvd = m_Inputs.FindPtr( "StabilityCalcFlag", 0 );
         VSPAEROMgr.m_StabilityCalcFlag.Set( nvd->GetInt(0) );
 
+        bool forceNewSetupfileOrig   = VSPAEROMgr.m_ForceNewSetupfile.Get();
+        nvd = m_Inputs.FindPtr( "ForceNewSetupfile", 0 );
+        VSPAEROMgr.m_ForceNewSetupfile.Set( nvd->GetInt(0) );
+
         //==== Execute Analysis ====//
         resId = VSPAEROMgr.ComputeSolver(stdout);
 
 
         //==== Restore Original Values ====//
         //    Geometry set
-        VSPAEROMgr.m_DegenGeomSet.Set( geomSetOrig );
+        VSPAEROMgr.m_GeomSet.Set( geomSetOrig );
 
         //    Regerence area, length parameters
         VSPAEROMgr.m_RefFlag.Set( refFlagOrig );
@@ -1096,6 +1152,7 @@ string VSPAEROSinglePointAnalysis::Execute()
         VSPAEROMgr.m_WakeSkipUntilIter.Set( wakeSkipUntilIterOrig );
         VSPAEROMgr.m_StabilityCalcFlag.Set( stabilityCalcFlagOrig );
 
+        VSPAEROMgr.m_ForceNewSetupfile.Set( forceNewSetupfileOrig );
     }
 
     return resId;
@@ -1110,12 +1167,14 @@ void VSPAEROSweepAnalysis::SetDefaults()
     {
 
         //Case Setup
-        m_Inputs.Add( NameValData( "GeomSet",           VSPAEROMgr.m_DegenGeomSet.Get()              ) );
+        m_Inputs.Add( NameValData( "GeomSet",           VSPAEROMgr.m_GeomSet.Get()           ) );
         m_Inputs.Add( NameValData( "NCPU",              VSPAEROMgr.m_NCPU.Get()              ) );
         m_Inputs.Add( NameValData( "WakeNumIter",       VSPAEROMgr.m_WakeNumIter.Get()       ) );
         m_Inputs.Add( NameValData( "WakeAvgStartIter",  VSPAEROMgr.m_WakeAvgStartIter.Get()  ) );
         m_Inputs.Add( NameValData( "WakeSkipUntilIter", VSPAEROMgr.m_WakeSkipUntilIter.Get() ) );
         m_Inputs.Add( NameValData( "StabilityCalcFlag", VSPAEROMgr.m_StabilityCalcFlag.Get() ) );
+        m_Inputs.Add( NameValData( "BatchModeFlag",     VSPAEROMgr.m_BatchModeFlag.Get()     ) );
+        m_Inputs.Add( NameValData( "ForceNewSetupfile", VSPAEROMgr.m_ForceNewSetupfile.Get() ) );
 
         //Reference area, lengths
         m_Inputs.Add( NameValData( "RefFlag",           VSPAEROMgr.m_RefFlag.Get()           ) );
@@ -1146,7 +1205,7 @@ void VSPAEROSweepAnalysis::SetDefaults()
     else
     {
         // TODO Throw an error here
-        printf("ERROR - trying to set defaults without a vehicle: void VSPAERODegenGeomAnalysis::SetDefaults()\n");
+        printf("ERROR: trying to set defaults without a vehicle \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
     }
 }
 
@@ -1162,9 +1221,9 @@ string VSPAEROSweepAnalysis::Execute()
 
         //==== Apply current analysis input values ====//
         //    Geometry set
-        int geomSetOrig    = VSPAEROMgr.m_DegenGeomSet.Get();
+        int geomSetOrig    = VSPAEROMgr.m_GeomSet.Get();
         nvd = m_Inputs.FindPtr( "GeomSet", 0 );
-        VSPAEROMgr.m_DegenGeomSet.Set( nvd->GetInt(0) );
+        VSPAEROMgr.m_GeomSet.Set( nvd->GetInt(0) );
 
         //    Regerence area, length parameters
         int refFlagOrig    = VSPAEROMgr.m_RefFlag.Get();
@@ -1231,7 +1290,7 @@ string VSPAEROSweepAnalysis::Execute()
         int wakeNumIterOrig          = VSPAEROMgr.m_WakeNumIter.Get();
         int wakeAvgStartIterOrig     = VSPAEROMgr.m_WakeAvgStartIter.Get();
         int wakeSkipUntilIterOrig    = VSPAEROMgr.m_WakeSkipUntilIter.Get();
-        bool stabilityCalcFlagOrig   = VSPAEROMgr.m_StabilityCalcFlag.Get(); // note: this is NOT an input
+        bool stabilityCalcFlagOrig   = VSPAEROMgr.m_StabilityCalcFlag.Get();
         nvd = m_Inputs.FindPtr( "NCPU", 0 );
         VSPAEROMgr.m_NCPU.Set( nvd->GetInt(0) );
         nvd = m_Inputs.FindPtr( "WakeNumIter" );
@@ -1243,6 +1302,14 @@ string VSPAEROSweepAnalysis::Execute()
         nvd = m_Inputs.FindPtr( "StabilityCalcFlag", 0 );
         VSPAEROMgr.m_StabilityCalcFlag.Set( nvd->GetInt(0) );
 
+        bool BatchModeFlagOrig       = VSPAEROMgr.m_BatchModeFlag.Get();
+        nvd = m_Inputs.FindPtr( "BatchModeFlag", 0 );
+        VSPAEROMgr.m_BatchModeFlag.Set( nvd->GetInt(0) );
+
+
+        bool forceNewSetupfileOrig   = VSPAEROMgr.m_ForceNewSetupfile.Get();
+        nvd = m_Inputs.FindPtr( "ForceNewSetupfile", 0 );
+        VSPAEROMgr.m_ForceNewSetupfile.Set( nvd->GetInt(0) );
 
         //==== Execute Analysis ====//
         resId = VSPAEROMgr.ComputeSolver(stdout);
@@ -1250,7 +1317,7 @@ string VSPAEROSweepAnalysis::Execute()
 
         //==== Restore Original Values ====//
         //    Geometry set
-        VSPAEROMgr.m_DegenGeomSet.Set( geomSetOrig );
+        VSPAEROMgr.m_GeomSet.Set( geomSetOrig );
 
         //    Regerence area, length parameters
         VSPAEROMgr.m_RefFlag.Set( refFlagOrig );
@@ -1283,6 +1350,9 @@ string VSPAEROSweepAnalysis::Execute()
         VSPAEROMgr.m_WakeSkipUntilIter.Set( wakeSkipUntilIterOrig );
         VSPAEROMgr.m_StabilityCalcFlag.Set( stabilityCalcFlagOrig );
 
+        VSPAEROMgr.m_BatchModeFlag.Set( BatchModeFlagOrig );
+
+        VSPAEROMgr.m_ForceNewSetupfile.Set( forceNewSetupfileOrig );
     }
 
     return resId;

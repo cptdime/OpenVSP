@@ -41,29 +41,32 @@ public:
 
     void UpdateFilenames();
     string ComputeGeometry();
-    void CreateSetupFile(FILE * outputFile=NULL);
-    string ComputeSolver(FILE * outputFile=NULL);     // returns a result with a vector of results id's under the name ResultVec
+    void CreateSetupFile( FILE * logFile = NULL );
+    string ComputeSolver( FILE * logFile = NULL ); // returns a result with a vector of results id's under the name ResultVec
+    string ComputeSolverBatch( FILE * logFile = NULL );
+    string ComputeSolverSingle( FILE * logFile = NULL );
     ProcessUtil* GetSolverProcess();
     bool IsSolverRunning();
     void KillSolver();
     void ReadAllResults();
-    string ReadHistoryFile();
-    string ReadLoadFile();
-    string ReadStabFile();
-    void AddResultHeader( string res_id, double mach, double alpha, double beta );
+
     int ExportResultsToCSV( string fileName );
 
+    IntParm m_AnalysisMethod;
+
+    BoolParm m_ForceNewSetupfile;
 
     // file names
-    string m_DegenFile;     //degengeom file name WITHOUT .csv file extension
+    string m_ModelNameBase; // this is the name used in the execution string
     string m_DegenFileFull; //degengeom file name WITH .csv file extension
+    string m_CompGeomFileFull; //geometry file used for panel method
     string m_SetupFile;
     string m_AdbFile;
     string m_HistoryFile;
     string m_LoadFile;
     string m_StabFile;
 
-    IntParm m_DegenGeomSet;
+    IntParm m_GeomSet;
 
     Parm m_Sref;
     Parm m_bref;
@@ -71,6 +74,7 @@ public:
     string m_RefGeomID;
     IntParm m_RefFlag;
     BoolParm m_StabilityCalcFlag;
+    BoolParm m_BatchModeFlag;
 
     IntParm m_CGGeomSet;
     IntParm m_NumMassSlice;
@@ -122,9 +126,24 @@ public:
     ProcessUtil m_SolverProcess;
 
 protected:
-    void WaitForFile( string filename );  // function is used to wait for the result to show up on the file system
+    string m_LastPanelMeshGeomId;
 
+    void WaitForFile( string filename );  // function is used to wait for the result to show up on the file system
+    void GetSweepVectors( vector<double> &alphaVec, vector<double> &betaVec, vector<double> &machVec );
+
+    void MonitorSolver( FILE * logFile );
     bool m_SolverProcessKill;
+
+    // helper functions for VSPAERO files
+    void ReadHistoryFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod );
+    void ReadLoadFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod );
+    void ReadStabFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod );
+    vector <string> ReadDelimLine( FILE * fp, char * delimeters );
+    bool CheckForCaseHeader( std::vector<string> headerStr );
+    int ReadVSPAEROCaseHeader( Results * res, FILE * fp, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod );
+
+    void AddResultHeader( string res_id, double mach, double alpha, double beta, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod );
+
 
 private:
     VSPAEROMgrSingleton();

@@ -517,6 +517,65 @@ void ScriptMgrSingleton::RegisterEnums( asIScriptEngine* se )
     assert( r >= 0 );
     r = se->RegisterEnumValue( "LEN_UNITS", "LEN_YD", LEN_YD );
     assert( r >= 0 );
+    r = se->RegisterEnumValue( "LEN_UNITS", "LEN_UNITLESS", LEN_UNITLESS );
+    assert( r >= 0 );
+
+    r = se->RegisterEnum( "DIMENSION_SET" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "DIMENSION_SET", "SET_3D", SET_3D );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "DIMENSION_SET", "SET_2D", SET_2D );
+    assert( r >= 0 );
+
+    r = se->RegisterEnum( "VIEW_TYPE" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_LEFT", VIEW_LEFT );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_RIGHT", VIEW_RIGHT );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_TOP", VIEW_TOP );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_BOTTOM", VIEW_BOTTOM );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_FRONT", VIEW_FRONT );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_REAR", VIEW_REAR );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_TYPE", "VIEW_NONE", VIEW_NONE );
+    assert( r >= 0 );
+
+    r = se->RegisterEnum( "VIEW_SHIFT" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_SHIFT", "LEFT", LEFT );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_SHIFT", "RIGHT", RIGHT );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_SHIFT", "UP", UP );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_SHIFT", "DOWN", DOWN );
+    assert( r >= 0 );
+
+    r = se->RegisterEnum( "VIEW_NUM" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_NUM", "VIEW_1", VIEW_1 );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_NUM", "VIEW_2HOR", VIEW_2HOR );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_NUM", "VIEW_2VER", VIEW_2VER );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_NUM", "VIEW_4", VIEW_4 );
+    assert( r >= 0 );
+
+    r = se->RegisterEnum( "VIEW_ROT" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_ROT", "ROT_0", ROT_0 );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_ROT", "ROT_90", ROT_90 );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_ROT", "ROT_180", ROT_180 );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VIEW_ROT", "ROT_270", ROT_270 );
+    assert( r >= 0 );
 
     r = se->RegisterEnum( "ANG_UNITS" );
     assert( r >= 0 );
@@ -668,6 +727,8 @@ void ScriptMgrSingleton::RegisterEnums( asIScriptEngine* se )
     assert( r >= 0 );
     r = se->RegisterEnumValue( "EXPORT_TYPE", "EXPORT_BEM", EXPORT_BEM );
     assert( r >= 0 );
+    r = se->RegisterEnumValue( "EXPORT_TYPE", "EXPORT_DXF", EXPORT_DXF );
+    assert( r >= 0 );
 
     r = se->RegisterEnum( "COMPUTATION_FILE_TYPE" );
     assert( r >= 0 );
@@ -809,6 +870,10 @@ void ScriptMgrSingleton::RegisterEnums( asIScriptEngine* se )
     assert( r >= 0 );
     r = se->RegisterEnumValue( "SUBSURF_TYPE", "SS_ELLIPSE", SS_ELLIPSE );
     assert( r >= 0 );
+    r = se->RegisterEnumValue( "SUBSURF_TYPE", "SS_CONTROL", SS_CONTROL );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "SUBSURF_TYPE", "SS_NUM_TYPES", SS_NUM_TYPES );
+    assert( r >= 0 );
 
     r = se->RegisterEnum( "WING_DRIVERS" );
     assert( r >= 0 );
@@ -894,7 +959,8 @@ void ScriptMgrSingleton::RegisterEnums( asIScriptEngine* se )
     assert( r >= 0 );
     r = se->RegisterEnumValue( "RES_GEOM_TYPE", "GEOM_XSECS", GEOM_XSECS );
     assert( r >= 0 );
-
+    r = se->RegisterEnumValue( "RES_GEOM_TYPE", "MESH_INDEX_AND_SLICE_TRI", MESH_INDEX_AND_SLICE_TRI );
+    assert( r >= 0 );
 
     r = se->RegisterEnum( "PROJ_TGT_TYPE" );
     assert( r >= 0 );
@@ -933,6 +999,11 @@ void ScriptMgrSingleton::RegisterEnums( asIScriptEngine* se )
     r = se->RegisterEnumValue( "PROJ_DIR_TYPE", "NUM_PROJ_DIR_OPTIONS", NUM_PROJ_DIR_OPTIONS );
     assert( r >= 0 );
 
+    r = se->RegisterEnum( "VSPAERO_ANALYSIS_METHOD" );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VSPAERO_ANALYSIS_METHOD", "VORTEX_LATTICE", VORTEX_LATTICE );
+    assert( r >= 0 );
+    r = se->RegisterEnumValue( "VSPAERO_ANALYSIS_METHOD", "PANEL", PANEL );
 
 }
 

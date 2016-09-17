@@ -35,12 +35,14 @@ CompGeomScreen.cpp
 CustomScreen.cpp
 DegenGeomScreen.cpp
 DesignVarScreen.cpp
+DXFOptionsScreen.cpp
 ExportScreen.cpp
 FeaStructScreen.cpp
 FitModelScreen.cpp
 FuselageScreen.cpp
 GroupLayout.cpp
 GuiDevice.cpp
+HingeScreen.cpp
 IGESOptionsScreen.cpp
 ImportScreen.cpp
 MainGLWindow.cpp
@@ -57,6 +59,7 @@ MassPropScreen.cpp
 MaterialEditScreen.cpp
 MenuItem.cpp
 MeshScreen.cpp
+MultTransScreen.cpp
 ParmDebugScreen.cpp
 ParmLinkScreen.cpp
 ParmScreen.cpp
@@ -93,12 +96,14 @@ CompGeomScreen.h
 CustomScreen.h
 DegenGeomScreen.h
 DesignVarScreen.h
+DXFOptionsScreen.h
 ExportScreen.h
 FeaStructScreen.h
 FitModelScreen.h
 FuselageScreen.h
 GroupLayout.h
 GuiDevice.h
+HingeScreen.h
 IGESOptionsScreen.h
 ImportScreen.h
 MainGLWindow.h
@@ -115,6 +120,7 @@ MassPropScreen.h
 MaterialEditScreen.h
 MenuItem.h
 MeshScreen.h
+MultTransScreen.h
 ParmDebugScreen.h
 ParmLinkScreen.h
 ParmScreen.h

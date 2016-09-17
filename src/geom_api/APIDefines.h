@@ -16,12 +16,14 @@ namespace vsp
 //======================== Error Codes ================================//
 enum ERROR_CODE {   VSP_OK,
                     VSP_INVALID_PTR,
+                    VSP_INVALID_TYPE,
                     VSP_CANT_FIND_TYPE,
                     VSP_CANT_FIND_PARM,
                     VSP_CANT_FIND_NAME,
                     VSP_INVALID_GEOM_ID,
                     VSP_FILE_DOES_NOT_EXIST,
                     VSP_FILE_WRITE_FAILURE,
+                    VSP_FILE_READ_FAILURE,
                     VSP_WRONG_XSEC_TYPE,
                     VSP_WRONG_FILE_TYPE,
                     VSP_INDEX_OUT_RANGE,
@@ -61,7 +63,39 @@ enum LEN_UNITS { LEN_MM,
                  LEN_M,
                  LEN_IN,
                  LEN_FT,
-                 LEN_YD
+                 LEN_YD,
+                 LEN_UNITLESS
+};
+
+enum DIMENSION_SET { SET_3D,
+                     SET_2D,
+                   };
+
+enum VIEW_TYPE { VIEW_LEFT,
+                 VIEW_RIGHT,
+                 VIEW_TOP,
+                 VIEW_BOTTOM,
+                 VIEW_FRONT,
+                 VIEW_REAR,
+                 VIEW_NONE
+};
+
+enum VIEW_SHIFT { LEFT,
+                  RIGHT,
+                  UP,
+                  DOWN,
+};
+
+enum VIEW_NUM { VIEW_1,
+                VIEW_2HOR,
+                VIEW_2VER,
+                VIEW_4,
+};
+
+enum VIEW_ROT { ROT_0,
+                ROT_90,
+                ROT_180,
+                ROT_270,
 };
 
 enum ANG_UNITS { ANG_RAD,
@@ -136,7 +170,8 @@ enum EXPORT_TYPE {  EXPORT_FELISA,
                     EXPORT_STEP,
                     EXPORT_PLOT3D,
                     EXPORT_IGES,
-                    EXPORT_BEM
+                    EXPORT_BEM,
+                    EXPORT_DXF
                  };
 
 enum COMPUTATION_FILE_TYPE  {   NO_FILE_TYPE        = 0,
@@ -158,6 +193,7 @@ enum COMPUTATION_FILE_TYPE  {   NO_FILE_TYPE        = 0,
                                 CFD_TKEY_TYPE       = 32768,
                                 PROJ_AREA_CSV_TYPE  = 65536,
                                 WAVE_DRAG_TXT_TYPE  = 131072,
+                                VSPAERO_PANEL_TRI_TYPE = 262144,
                             };
 
 enum SET_TYPE { SET_ALL = 0,
@@ -176,6 +212,7 @@ enum RES_DATA_TYPE {    INVALID_TYPE = -1,
 enum RES_GEOM_TYPE {    MESH_INDEXED_TRI,
                         MESH_SLICE_TRI,
                         GEOM_XSECS,
+                        MESH_INDEX_AND_SLICE_TRI,
                    };
 
 enum CFD_MESH_EXPORT_TYPE { CFD_STL_FILE_NAME,
@@ -310,6 +347,10 @@ enum PROP_PCURVE { PROP_CHORD,
                    PROP_SKEW,
                    NUM_PROP_PCURVE
                  };
+
+enum VSPAERO_ANALYSIS_METHOD { VORTEX_LATTICE,
+                               PANEL
+                             };
 
 }   // Namespace
 

@@ -51,7 +51,7 @@ public:
 
     virtual void GuiDeviceCallBack( GuiDevice* device );
 
-    void AddOutputText( Fl_Text_Display *display, const char *text );
+    void AddOutputText( Fl_Text_Display *display, const string &text );
 
     ProcessUtil *GetProcess( int id );
     Fl_Text_Display *GetDisplay( int id );
@@ -72,12 +72,22 @@ protected:
 
     // Case Setup
     GroupLayout m_GeomLayout;
+    //  Radio buttons for analysis method selection VLM OR Panel
+    ToggleButton m_AeroMethodToggleVLM;
+    ToggleButton m_AeroMethodTogglePanel;
+    ToggleRadioGroup m_AeroMethodToggleGroup;
     Choice m_GeomSetChoice;
-    TriggerButton m_DegenGeomButton;
+    TriggerButton m_ComputeGeometryButton;
+    //  Degengeom (VLM & Panel)
     StringOutput m_DegenFileName;
     TriggerButton m_DegenFileButton;
+    //  CompGeom (Panel only)
+    StringOutput m_CompGeomFileName;
+    TriggerButton m_CompGeomFileButton;
+    // Additional options
     SliderAdjRangeInput m_NCPUSlider;
     ToggleButton m_StabilityCalcToggle;
+    ToggleButton m_BatchCalculationToggle;
 
     // Wake calculation options
     GroupLayout m_WakeLayout;
@@ -149,7 +159,7 @@ protected:
 
 
     // Variable to check for changes in degenfile name
-    string m_DegenFilePrevious;
+    string m_ModelNameBasePrevious;
 
     // Additional thread handling stuff
     ProcessUtil m_SolverProcess;

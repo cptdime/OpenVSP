@@ -20,20 +20,18 @@ public:
     APITestSuite()
     {
         // General
-        TEST_ADD( APITestSuite::CheckSetup)
+        TEST_ADD( APITestSuite::CheckSetup )
         // Geometry manipulation
-        TEST_ADD( APITestSuite::CreateGeometry)
-        TEST_ADD( APITestSuite::ChangePodParams)
-        TEST_ADD( APITestSuite::CopyPasteGeometry)
+        TEST_ADD( APITestSuite::CreateGeometry )
+        TEST_ADD( APITestSuite::ChangePodParams )
+        TEST_ADD( APITestSuite::CopyPasteGeometry )
         // Analysis
-        TEST_ADD( APITestSuite::CheckAnalysisMgr)
-        TEST_ADD( APITestSuite::TestAnalysesWithPod)
+        TEST_ADD( APITestSuite::CheckAnalysisMgr )
+        TEST_ADD( APITestSuite::TestAnalysesWithPod )
 
-        // VSPAERO
-        TEST_ADD( APITestSuite::TestVSPAeroComputeGeom)
-        TEST_ADD( APITestSuite::TestVSPAeroSinglePoint)
-        TEST_ADD( APITestSuite::TestVSPAeroSinglePointStab)
-        TEST_ADD( APITestSuite::TestVSPAeroSweep)
+        // Export
+        TEST_ADD( APITestSuite::TestDXFExport )
+
     }
 
 private:
@@ -46,16 +44,40 @@ private:
     // Analysis
     void CheckAnalysisMgr();
     void TestAnalysesWithPod();
+    // Export
+    void TestDXFExport();
+};
+
+class APITestSuiteVSPAERO : public Test::Suite
+{
+public:
+    APITestSuiteVSPAERO()
+    {
+        // VSPAERO
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroCreateModel )     //this test just creates the model with various features
+        //  Vortex Lattice Method Tests
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroComputeGeom )
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroSinglePoint )
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroSinglePointStab )
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroSweep )
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroSweepBatch )
+        //  Panel Method Tests
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroComputeGeomPanel )
+        TEST_ADD( APITestSuiteVSPAERO::TestVSPAeroSinglePointPanel )
+    }
+
+private:
     // VSPAERO
+    void TestVSPAeroCreateModel();
+    //  Vortex Lattice Method Tests
     void TestVSPAeroComputeGeom();        //<--Execute this VSPERO test first
     void TestVSPAeroSinglePoint();
     void TestVSPAeroSinglePointStab();
     void TestVSPAeroSweep();
-
-    // Helper functions
-    void PrintAnalysisInputs(const string analysis_name);
-    void PrintResults(const vector < string > &results_id_vec );
-    void PrintResults(const string &results_id);
+    void TestVSPAeroSweepBatch();
+    //  Panel Method Tests
+    void TestVSPAeroComputeGeomPanel();        //<--Execute this VSPERO test first for panel methods
+    void TestVSPAeroSinglePointPanel();
 
     string m_vspfname_for_vspaerotests;
 };

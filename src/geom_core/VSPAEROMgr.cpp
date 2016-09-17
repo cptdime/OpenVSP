@@ -14,6 +14,8 @@
 #include "StlHelper.h"
 #include "APIDefines.h"
 #include "WingGeom.h"
+#include "MeshGeom.h"
+#include "APIDefines.h"
 
 #include "StringUtil.h"
 #include "FileUtil.h"
@@ -25,8 +27,13 @@ VSPAEROMgrSingleton::VSPAEROMgrSingleton() : ParmContainer()
 {
     m_Name = "VSPAEROSettings";
 
-    m_DegenGeomSet.Init( "GeomSet", "VSPAERO", this, 0, 0, 12 );
-    m_DegenGeomSet.SetDescript( "Geometry set" );
+    m_GeomSet.Init( "GeomSet", "VSPAERO", this, 0, 0, 12 );
+    m_GeomSet.SetDescript( "Geometry set" );
+
+    m_AnalysisMethod.Init( "AnalysisMethod", "VSPAERO", this, vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE, vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE, vsp::VSPAERO_ANALYSIS_METHOD::PANEL );
+    m_AnalysisMethod.SetDescript( "Analysis method: 0=VLM, 1=Panel" );
+
+    m_LastPanelMeshGeomId = string();
 
     m_Sref.Init( "Sref", "VSPAERO", this, 100.0, 0.0, 1e12 );
     m_Sref.SetDescript( "Reference area" );
@@ -95,14 +102,16 @@ VSPAEROMgrSingleton::VSPAEROMgrSingleton() : ParmContainer()
     m_StabilityCalcFlag.SetDescript( "Flag to calculate stability derivatives" );
     m_StabilityCalcFlag = false;
 
+    m_BatchModeFlag.Init( "BatchModeFlag", "VSPAERO", this, 0.0, 0.0, 1.0 );
+    m_BatchModeFlag.SetDescript( "Flag to calculate in batch mode" );
+    m_BatchModeFlag = false;
 
-    m_DegenFile     = string();
-    m_DegenFileFull = string();
-    m_SetupFile     = string();
-    m_AdbFile       = string();
-    m_HistoryFile   = string();
-    m_LoadFile      = string();
-    m_StabFile      = string();
+    m_ForceNewSetupfile.Init( "ForceNewSetupfile", "VSPAERO", this, 0.0, 0.0, 1.0 );
+    m_ForceNewSetupfile.SetDescript( "Flag to creation of new setup file in ComputeSolver() even if one exists" );
+    m_ForceNewSetupfile = false;
+
+    // This sets all the filename members to the appropriate value (for example: empty strings if there is no vehicle)
+    UpdateFilenames();
 
     m_SolverProcessKill = false;
 
@@ -211,66 +220,83 @@ void VSPAEROMgrSingleton::Update()
 
 void VSPAEROMgrSingleton::UpdateFilenames()    //A.K.A. SetupDegenFile()
 {
-    Vehicle *veh = VehicleMgr.GetVehicle();
+    // Initialize these to blanks.  if any of the checks fail the variables will at least contain an empty string
+    m_ModelNameBase     = string();
+    m_DegenFileFull     = string();
+    m_CompGeomFileFull  = string();     // TODO this is set from the get export name
+    m_SetupFile         = string();
+    m_AdbFile           = string();
+    m_HistoryFile       = string();
+    m_LoadFile          = string();
+    m_StabFile          = string();
 
+    Vehicle *veh = VehicleMgr.GetVehicle();
     if( veh )
     {
-
-        m_DegenFile = veh->getExportFileName( vsp::DEGEN_GEOM_CSV_TYPE );
-
-        // test if we can open the file
-        FILE *fp = NULL;
-        fp = fopen( m_DegenFile.c_str(), "r" );
-        if( fp )
+        // Generate the base name based on the vsp3filename without the extension
+        int pos = -1;
+        switch ( m_AnalysisMethod.Get() )
         {
-            fclose( fp );
-        }
-        else
-        {
-            m_DegenFile = string();
-        }
+        case vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE:
+            // The base_name is dependent on the DegenFileName
+            // TODO extra "_DegenGeom" is added to the m_ModelBase
+            m_DegenFileFull = veh->getExportFileName( vsp::DEGEN_GEOM_CSV_TYPE );
 
-        // remove the .csv file extension so it can be used as the base name for VSPAERO files
-        if( !m_DegenFile.empty() )
-        {
-            int pos = m_DegenFile.find( ".csv" );
+            m_ModelNameBase = m_DegenFileFull;
+            pos = m_ModelNameBase.find( ".csv" );
             if ( pos >= 0 )
             {
-                m_DegenFile.erase( pos, m_DegenFile.length() - 1 );
+                m_ModelNameBase.erase( pos, m_ModelNameBase.length() - 1 );
             }
+
+            m_CompGeomFileFull  = string(); //This file is not used for vortex lattice analysis
+            m_SetupFile         = m_ModelNameBase + string( ".vspaero" );
+            m_AdbFile           = m_ModelNameBase + string( ".adb" );
+            m_HistoryFile       = m_ModelNameBase + string( ".history" );
+            m_LoadFile          = m_ModelNameBase + string( ".lod" );
+            m_StabFile          = m_ModelNameBase + string( ".stab" );
+
+            break;
+
+        case vsp::VSPAERO_ANALYSIS_METHOD::PANEL:
+            m_CompGeomFileFull = veh->getExportFileName( vsp::VSPAERO_PANEL_TRI_TYPE );
+
+            m_ModelNameBase = m_CompGeomFileFull;
+            pos = m_ModelNameBase.find( ".tri" );
+            if ( pos >= 0 )
+            {
+                m_ModelNameBase.erase( pos, m_ModelNameBase.length() - 1 );
+            }
+
+            m_DegenFileFull     = m_ModelNameBase + string( "_DegenGeom.csv" );
+            m_SetupFile         = m_ModelNameBase + string( ".vspaero" );
+            m_AdbFile           = m_ModelNameBase + string( ".adb" );
+            m_HistoryFile       = m_ModelNameBase + string( ".history" );
+            m_LoadFile          = m_ModelNameBase + string( ".lod" );
+            m_StabFile          = m_ModelNameBase + string( ".stab" );
+
+            break;
+
+        default:
+            // TODO print out an error here
+            break;
         }
-    }
-    else
-    {
-        m_DegenFile = string();
+
     }
 
-    // Setup the remaining file names
-    if( !m_DegenFile.empty() )
-    {
-        m_DegenFileFull = m_DegenFile + string( ".csv" );
-        m_SetupFile     = m_DegenFile + string( ".vspaero" );
-        m_AdbFile       = m_DegenFile + string( ".adb" );
-        m_HistoryFile   = m_DegenFile + string( ".history" );
-        m_LoadFile      = m_DegenFile + string( ".lod" );
-        m_StabFile      = m_DegenFile + string( ".stab" );
-    }
-    else
-    {
-        m_DegenFileFull = string();
-        m_SetupFile     = string();
-        m_AdbFile       = string();
-        m_HistoryFile   = string();
-        m_LoadFile      = string();
-        m_StabFile      = string();
-    }
 }
 
 string VSPAEROMgrSingleton::ComputeGeometry()
 {
     Vehicle *veh = VehicleMgr.GetVehicle();
+    if ( !veh )
+    {
+        fprintf( stderr, "ERROR: Unable to get vehicle \n\tFile: %s \tLine:%d\n", __FILE__, __LINE__ );
+        return string();
+    }
 
-    veh->CreateDegenGeom( VSPAEROMgr.m_DegenGeomSet() );
+    veh->CreateDegenGeom( VSPAEROMgr.m_GeomSet() );
+
 
     // record original values
     bool exptMfile_orig = veh->getExportDegenGeomMFile();
@@ -280,26 +306,89 @@ string VSPAEROMgrSingleton::ComputeGeometry()
 
     UpdateFilenames();
 
+    // Note: while in panel mode the degen file required by vspaero is
+    // dependent on the tri filename and not necessarily what the current
+    // setting is for the vsp::DEGEN_GEOM_CSV_TYPE
+    string degenGeomFile_orig = veh->getExportFileName( vsp::DEGEN_GEOM_CSV_TYPE );
+    veh->setExportFileName( vsp::DEGEN_GEOM_CSV_TYPE, m_DegenFileFull );
+
     veh->WriteDegenGeomFile();
 
     // restore original values
     veh->setExportDegenGeomMFile( exptMfile_orig );
     veh->setExportDegenGeomCsvFile( exptCSVfile_orig );
+    veh->setExportFileName( vsp::DEGEN_GEOM_CSV_TYPE, degenGeomFile_orig );
 
-    // add output filenames to results manager (this is important for the Analysis Manager)
-    Results* res = ResultsMgr.CreateResults( "VSPAERO_DegenGeom" );
-    // add to results manager
-    res->Add( NameValData( "OutputFileName", m_DegenFile + string( ".csv" ) ) );
-    res->Add( NameValData( "GeometrySet", VSPAEROMgr.m_DegenGeomSet() ) );
+    WaitForFile( m_DegenFileFull );
+    if ( !FileExist( m_DegenFileFull ) )
+    {
+        fprintf( stderr, "WARNING: DegenGeom file not found: %s\n\tFile: %s \tLine:%d\n", m_DegenFileFull.c_str(), __FILE__, __LINE__ );
+    }
+
+    // Generate *.tri geometry file for Panel method
+    if ( m_AnalysisMethod.Get() == vsp::VSPAERO_ANALYSIS_METHOD::PANEL )
+    {
+        // Cleanup previously created meshGeom IDs created from VSPAEROMgr
+        if ( veh->FindGeom( m_LastPanelMeshGeomId ) )
+        {
+            veh->DeleteGeom( m_LastPanelMeshGeomId );
+        }
+
+        // Compute intersected and trimmed geometry
+        int halfFlag = 0;
+        m_LastPanelMeshGeomId = veh->CompGeomAndFlatten( VSPAEROMgr.m_GeomSet(), halfFlag );
+
+        // After CompGeomAndFlatten() is run all the geometry is hidden and the intersected & trimmed mesh is the only one shown
+        veh->WriteTRIFile( m_CompGeomFileFull , vsp::SET_TYPE::SET_SHOWN );
+        WaitForFile( m_CompGeomFileFull );
+        if ( !FileExist( m_CompGeomFileFull ) )
+        {
+            fprintf( stderr, "WARNING: CompGeom file not found: %s\n\tFile: %s \tLine:%d\n", m_CompGeomFileFull.c_str(), __FILE__, __LINE__ );
+        }
+
+    }
+
+    // Clear previous results
+    while ( ResultsMgr.GetNumResults( "VSPAERO_Geom" ) > 0 )
+    {
+        ResultsMgr.DeleteResult( ResultsMgr.FindResultsID( "VSPAERO_Geom",  0 ) );
+    }
+    // Write out new results
+    Results* res = ResultsMgr.CreateResults( "VSPAERO_Geom" );
+    if ( !res )
+    {
+        fprintf( stderr, "ERROR: Unable to create result in result manager \n\tFile: %s \tLine:%d\n", __FILE__, __LINE__ );
+        return string();
+    }
+    res->Add( NameValData( "GeometrySet", VSPAEROMgr.m_GeomSet() ) );
+    res->Add( NameValData( "AnalysisMethod", m_AnalysisMethod.Get() ) );
+    res->Add( NameValData( "DegenGeomFileName", m_DegenFileFull ) );
+    if ( m_AnalysisMethod.Get() == vsp::VSPAERO_ANALYSIS_METHOD::PANEL )
+    {
+        res->Add( NameValData( "CompGeomFileName", m_CompGeomFileFull ) );
+        res->Add( NameValData( "Mesh_GeomID", m_LastPanelMeshGeomId ) );
+    }
+    else
+    {
+        res->Add( NameValData( "CompGeomFileName", string() ) );
+        res->Add( NameValData( "Mesh_GeomID", string() ) );
+    }
 
     return res->GetID();
 
 }
 
 /* TODO - finish implementation of generating the setup file from the VSPAEROMgr*/
-void VSPAEROMgrSingleton::CreateSetupFile(FILE * outputFile)
+void VSPAEROMgrSingleton::CreateSetupFile( FILE * logFile )
 {
+    UpdateFilenames();
+
     Vehicle *veh = VehicleMgr.GetVehicle();
+    if ( !veh )
+    {
+        fprintf( stderr, "ERROR %d: Unable to get vehicle \n\tFile: %s \tLine:%d\n", vsp::VSP_INVALID_PTR, __FILE__, __LINE__ );
+        return;
+    }
 
     // Clear existing serup file
     if ( FileExist( m_SetupFile ) )
@@ -324,25 +413,69 @@ void VSPAEROMgrSingleton::CreateSetupFile(FILE * outputFile)
     args.push_back( StringUtil::double_to_string( m_Ycg(), "%f" ) );
     args.push_back( StringUtil::double_to_string( m_Zcg(), "%f" ) );
 
-    args.push_back( "-aoa" );
-    args.push_back( StringUtil::double_to_string( m_AlphaStart(), "%f" ) );
+    // If the GUI is selected for batch calculation write the setup file with
+    // the entire vector of mach alpha and beta points otherwise just write the
+    // starting freestream condition.  This will give the easiest to use setup
+    // file representing the options in the GUI.
+    if ( m_BatchModeFlag.Get() )
+    {
+        vector<double> alphaVec;
+        vector<double> betaVec;
+        vector<double> machVec;
+        GetSweepVectors( alphaVec, betaVec, machVec );
 
-    args.push_back( "-beta" );
-    args.push_back( StringUtil::double_to_string( m_BetaStart(), "%f" ) );
+        //====== Loop over flight conditions and solve ======//
+        // Mach
+        args.push_back( "-mach" );
+        for ( int iMach = 0; iMach < machVec.size(); iMach++ )
+        {
+            args.push_back( StringUtil::double_to_string( machVec[iMach], "%f " ) );
+        }
+        args.push_back( "END" );
 
-    args.push_back( "-mach" );
-    args.push_back( StringUtil::double_to_string( m_MachStart(), "%f" ) );
+        // Alpha
+        args.push_back( "-aoa" );
+        for ( int iAlpha = 0; iAlpha < alphaVec.size(); iAlpha++ )
+        {
+            args.push_back( StringUtil::double_to_string( alphaVec[iAlpha], "%f " ) );
+        }
+        args.push_back( "END" );
+
+        // Beta
+        args.push_back( "-beta" );
+        for ( int iBeta = 0; iBeta < betaVec.size(); iBeta++ )
+        {
+            args.push_back( StringUtil::double_to_string( betaVec[iBeta], "%f " ) );
+        }
+        args.push_back( "END" );
+    }
+    else
+    {
+        args.push_back( "-aoa" );
+        args.push_back( StringUtil::double_to_string( m_AlphaStart(), "%f" ) );
+        args.push_back( "END" );
+
+        args.push_back( "-beta" );
+        args.push_back( StringUtil::double_to_string( m_BetaStart(), "%f" ) );
+        args.push_back( "END" );
+
+        args.push_back( "-mach" );
+        args.push_back( StringUtil::double_to_string( m_MachStart(), "%f" ) );
+        args.push_back( "END" );
+    }
+
+
 
     args.push_back( "-wakeiters" );
     args.push_back( StringUtil::int_to_string( m_WakeNumIter(), "%d" ) );
 
-    args.push_back( m_DegenFile );
+    args.push_back( m_ModelNameBase );
 
     //Print out execute command
     string cmdStr = m_SolverProcess.PrettyCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
-    if( outputFile )
+    if( logFile )
     {
-        fprintf(outputFile,cmdStr.c_str());
+        fprintf( logFile, "%s", cmdStr.c_str() );
     }
     else
     {
@@ -356,34 +489,7 @@ void VSPAEROMgrSingleton::CreateSetupFile(FILE * outputFile)
     m_SolverProcess.ForkCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
 
     // ==== MonitorSolverProcess ==== //
-    int bufsize = 1000;
-    char *buf;
-    buf = ( char* ) malloc( sizeof( char ) * ( bufsize + 1 ) );
-    unsigned long nread=1;
-    bool runflag = m_SolverProcess.IsRunning();
-    while ( runflag || nread>0)
-    {
-        m_SolverProcess.ReadStdoutPipe( buf, bufsize, &nread );
-        if( nread > 0 )
-        {
-            buf[nread] = 0;
-            StringUtil::change_from_to( buf, '\r', '\n' );
-            if( outputFile )
-            {
-                fprintf(outputFile,buf);
-            }
-            else
-            {
-                MessageData data;
-                data.m_String = "VSPAEROSolverMessage";
-                data.m_StringVec.push_back( string( buf ) );
-                MessageMgr::getInstance().Send( "ScreenMgr", NULL, data );
-            }
-        }
-
-        SleepForMilliseconds( 100 );
-        runflag = m_SolverProcess.IsRunning();
-    }
+    MonitorSolver( logFile );
 
     // Check if the kill solver flag has been raised, if so clean up and return
     //  note: we could have exited the IsRunning loop if the process was killed
@@ -398,7 +504,7 @@ void VSPAEROMgrSingleton::CreateSetupFile(FILE * outputFile)
     if ( !FileExist( m_SetupFile ) )
     {
         // shouldn't be able to get here but create a setup file with the correct settings
-        printf( "ERROR - setup file not found\n" );
+        fprintf( stderr, "ERROR %d: setup file not found, file %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_DOES_NOT_EXIST, m_SetupFile.c_str(), __FILE__, __LINE__ );
     }
 
     // Send the message to update the screens
@@ -410,10 +516,6 @@ void VSPAEROMgrSingleton::CreateSetupFile(FILE * outputFile)
 
 void VSPAEROMgrSingleton::ClearAllPreviousResults()
 {
-    while ( ResultsMgr.GetNumResults( "VSPAERO_DegenGeom" ) > 0 )
-    {
-        ResultsMgr.DeleteResult( ResultsMgr.FindResultsID( "VSPAERO_DegenGeom",  0 ) );
-    }
     while ( ResultsMgr.GetNumResults( "VSPAERO_History" ) > 0 )
     {
         ResultsMgr.DeleteResult( ResultsMgr.FindResultsID( "VSPAERO_History",  0 ) );
@@ -432,11 +534,76 @@ void VSPAEROMgrSingleton::ClearAllPreviousResults()
     }
 }
 
-/* ComputeSolver(FILE * outputFile)
-    Returns a result with a vector of results id's under the name ResultVec
-    Optional input of outputFile allows outputting to a log file or the console
+void VSPAEROMgrSingleton::GetSweepVectors( vector<double> &alphaVec, vector<double> &betaVec, vector<double> &machVec )
+{
+    // grab current parm values
+    double alphaStart = m_AlphaStart.Get();
+    double alphaEnd = m_AlphaEnd.Get();
+    int alphaNpts = m_AlphaNpts.Get();
+
+    double betaStart = m_BetaStart.Get();
+    double betaEnd = m_BetaEnd.Get();
+    int betaNpts = m_BetaNpts.Get();
+
+    double machStart = m_MachStart.Get();
+    double machEnd = m_MachEnd.Get();
+    int machNpts = m_MachNpts.Get();
+
+    // Calculate spacing
+    double alphaDelta = 0.0;
+    if ( alphaNpts > 1 )
+    {
+        alphaDelta = ( alphaEnd - alphaStart ) / ( alphaNpts - 1.0 );
+    }
+    for ( int iAlpha = 0; iAlpha < alphaNpts; iAlpha++ )
+    {
+        //Set current alpha value
+        alphaVec.push_back( alphaStart + double( iAlpha ) * alphaDelta );
+    }
+
+    double betaDelta = 0.0;
+    if ( betaNpts > 1 )
+    {
+        betaDelta = ( betaEnd - betaStart ) / ( betaNpts - 1.0 );
+    }
+    for ( int iBeta = 0; iBeta < betaNpts; iBeta++ )
+    {
+        //Set current alpha value
+        betaVec.push_back( betaStart + double( iBeta ) * betaDelta );
+    }
+
+    double machDelta = 0.0;
+    if ( machNpts > 1 )
+    {
+        machDelta = ( machEnd - machStart ) / ( machNpts - 1.0 );
+    }
+    for ( int iMach = 0; iMach < machNpts; iMach++ )
+    {
+        //Set current alpha value
+        machVec.push_back( machStart + double( iMach ) * machDelta );
+    }
+}
+
+/* ComputeSolver(FILE * logFile)
+Returns a result with a vector of results id's under the name ResultVec
+Optional input of logFile allows outputting to a log file or the console
 */
-string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
+string VSPAEROMgrSingleton::ComputeSolver( FILE * logFile )
+{
+    UpdateFilenames();
+    if ( m_BatchModeFlag.Get() )
+    {
+        return ComputeSolverBatch( logFile );
+    }
+    else
+    {
+        return ComputeSolverSingle( logFile );
+    }
+}
+
+/* ComputeSolverSingle(FILE * logFile)
+*/
+string VSPAEROMgrSingleton::ComputeSolverSingle( FILE * logFile )
 {
     std::vector <string> res_id_vector;
 
@@ -444,64 +611,68 @@ string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
 
     if ( veh )
     {
-        // Calculate spacing
-        double alphaDelta = 0.0;
-        if ( m_AlphaNpts.Get() > 1 )
-        {
-            alphaDelta = ( m_AlphaEnd.Get() - m_AlphaStart.Get() ) / ( m_AlphaNpts.Get() - 1.0 );
-        }
-        double betaDelta = 0.0;
-        if ( m_BetaNpts.Get() > 1 )
-        {
-            betaDelta = ( m_BetaEnd.Get() - m_BetaStart.Get() ) / ( m_BetaNpts.Get() - 1.0 );
-        }
-        double machDelta = 0.0;
-        if ( m_MachNpts.Get() > 1 )
-        {
-            machDelta = ( m_MachEnd.Get() - m_MachStart.Get() ) / ( m_MachNpts.Get() - 1.0 );
-        }
+
+        string adbFileName = m_AdbFile;
+        string historyFileName = m_HistoryFile;
+        string loadFileName = m_LoadFile;
+        string stabFileName = m_StabFile;
+        string modelNameBase = m_ModelNameBase;
+
+        bool stabilityFlag = m_StabilityCalcFlag.Get();
+        vsp::VSPAERO_ANALYSIS_METHOD analysisMethod = ( vsp::VSPAERO_ANALYSIS_METHOD )m_AnalysisMethod.Get();
+
+        int ncpu = m_NCPU.Get();
+
+        int wakeAvgStartIter = m_WakeAvgStartIter.Get();
+        int wakeSkipUntilIter = m_WakeSkipUntilIter.Get();
+
 
         //====== Modify/Update the setup file ======//
-        if ( !FileExist( m_SetupFile ) )
+        if ( !FileExist( m_SetupFile ) || m_ForceNewSetupfile.Get() )
         {
             // if the setup file doesn't exist, create one with the current settings
             // TODO output a warning to the user that we are creating a default file
             CreateSetupFile();
         }
 
+        vector<double> alphaVec;
+        vector<double> betaVec;
+        vector<double> machVec;
+        GetSweepVectors( alphaVec, betaVec, machVec );
+
         //====== Loop over flight conditions and solve ======//
         // TODO make this into a case list with a single loop
-        for ( int iAlpha = 0; iAlpha < m_AlphaNpts.Get(); iAlpha++ )
+        for ( int iAlpha = 0; iAlpha < alphaVec.size(); iAlpha++ )
         {
             //Set current alpha value
-            double current_alpha = m_AlphaStart.Get() + double( iAlpha ) * alphaDelta;
+            double current_alpha = alphaVec[iAlpha];
 
-            for ( int iBeta = 0; iBeta < m_BetaNpts.Get(); iBeta++ )
+            for ( int iBeta = 0; iBeta < betaVec.size(); iBeta++ )
             {
                 //Set current beta value
-                double current_beta = m_BetaStart.Get() + double( iBeta ) * betaDelta;
+                double current_beta = betaVec[iBeta];
 
-                for ( int iMach = 0; iMach < m_MachNpts.Get(); iMach++ )
+                for ( int iMach = 0; iMach < machVec.size(); iMach++ )
                 {
                     //Set current mach value
-                    double current_mach = m_MachStart.Get() + double( iMach ) * machDelta;
+                    double current_mach = machVec[iMach];
 
                     //====== Clear VSPAERO output files ======//
-                    if ( FileExist( m_AdbFile ) )
+                    if ( FileExist( adbFileName ) )
                     {
-                        remove( m_AdbFile.c_str() );
+                        remove( adbFileName.c_str() );
                     }
-                    if ( FileExist( m_HistoryFile ) )
+                    if ( FileExist( historyFileName ) )
                     {
-                        remove( m_HistoryFile.c_str() );
+                        remove( historyFileName.c_str() );
                     }
-                    if ( FileExist( m_LoadFile ) )
+                    if ( FileExist( loadFileName ) )
                     {
-                        remove( m_LoadFile.c_str() );
+                        remove( loadFileName.c_str() );
                     }
-                    if ( FileExist( m_StabFile ) )
+                    if ( FileExist( stabFileName ) )
                     {
-                        remove( m_StabFile.c_str() );
+                        remove( stabFileName.c_str() );
                     }
 
                     //====== Send command to be executed by the system at the command prompt ======//
@@ -509,31 +680,40 @@ string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
                     // Set mach, alpha, beta (save to local "current*" variables to use as header information in the results manager)
                     args.push_back( "-fs" );       // "freestream" override flag
                     args.push_back( StringUtil::double_to_string( current_mach, "%f" ) );
+                    args.push_back( "END" );
                     args.push_back( StringUtil::double_to_string( current_alpha, "%f" ) );
+                    args.push_back( "END" );
                     args.push_back( StringUtil::double_to_string( current_beta, "%f" ) );
+                    args.push_back( "END" );
                     // Set number of openmp threads
                     args.push_back( "-omp" );
                     args.push_back( StringUtil::int_to_string( m_NCPU.Get(), "%d" ) );
                     // Set stability run arguments
-                    if ( m_StabilityCalcFlag.Get() )
+                    if ( stabilityFlag )
                     {
                         args.push_back( "-stab" );
                     }
                     // Force averaging startign at wake iteration N
-                    args.push_back( "-avg" );
-                    args.push_back( StringUtil::int_to_string( m_WakeAvgStartIter.Get(), "%d" ) );
-                    // No wake for first N iterations
-                    args.push_back( "-nowake" );
-                    args.push_back( StringUtil::int_to_string( m_WakeSkipUntilIter.Get(), "%d" ) );
+                    if( wakeAvgStartIter >= 1 )
+                    {
+                        args.push_back( "-avg" );
+                        args.push_back( StringUtil::int_to_string( wakeAvgStartIter, "%d" ) );
+                    }
+                    if( wakeSkipUntilIter >= 1 )
+                    {
+                        // No wake for first N iterations
+                        args.push_back( "-nowake" );
+                        args.push_back( StringUtil::int_to_string( wakeSkipUntilIter, "%d" ) );
+                    }
 
                     // Add model file name
-                    args.push_back( m_DegenFile );
+                    args.push_back( modelNameBase );
 
                     //Print out execute command
                     string cmdStr = m_SolverProcess.PrettyCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
-                    if( outputFile )
+                    if( logFile )
                     {
-                        fprintf(outputFile,cmdStr.c_str());
+                        fprintf( logFile, "%s", cmdStr.c_str() );
                     }
                     else
                     {
@@ -547,34 +727,7 @@ string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
                     m_SolverProcess.ForkCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
 
                     // ==== MonitorSolverProcess ==== //
-                    int bufsize = 1000;
-                    char *buf;
-                    buf = ( char* ) malloc( sizeof( char ) * ( bufsize + 1 ) );
-                    unsigned long nread=1;
-                    bool runflag = m_SolverProcess.IsRunning();
-                    while ( runflag || nread>0)
-                    {
-                        m_SolverProcess.ReadStdoutPipe( buf, bufsize, &nread );
-                        if( nread > 0 )
-                        {
-                            buf[nread] = 0;
-                            StringUtil::change_from_to( buf, '\r', '\n' );
-                            if( outputFile )
-                            {
-                                fprintf(outputFile,buf);
-                            }
-                            else
-                            {
-                                MessageData data;
-                                data.m_String = "VSPAEROSolverMessage";
-                                data.m_StringVec.push_back( string( buf ) );
-                                MessageMgr::getInstance().Send( "ScreenMgr", NULL, data );
-                            }
-                        }
-
-                        SleepForMilliseconds( 100 );
-                        runflag = m_SolverProcess.IsRunning();
-                    }
+                    MonitorSolver( logFile );
 
 
                     // Check if the kill solver flag has been raised, if so clean up and return
@@ -588,14 +741,11 @@ string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
 
                     //====== Read in all of the results ======//
                     // read the files if there is new data that has not successfully been read in yet
-                    res_id_vector.push_back( ReadHistoryFile() );
-                    AddResultHeader( res_id_vector[res_id_vector.size() - 1], current_mach, current_alpha, current_beta );
-                    res_id_vector.push_back( ReadLoadFile() );
-                    AddResultHeader( res_id_vector[res_id_vector.size() - 1], current_mach, current_alpha, current_beta );
-                    if ( m_StabilityCalcFlag.Get() )
+                    ReadHistoryFile( historyFileName, res_id_vector, analysisMethod );
+                    ReadLoadFile( loadFileName, res_id_vector, analysisMethod );
+                    if ( stabilityFlag )
                     {
-                        res_id_vector.push_back( ReadStabFile() );        //*.STAB stability coeff file
-                        AddResultHeader( res_id_vector[res_id_vector.size() - 1], current_mach, current_alpha, current_beta );
+                        ReadStabFile( stabFileName, res_id_vector, analysisMethod );      //*.STAB stability coeff file
                     }
 
                     // Send the message to update the screens
@@ -624,13 +774,214 @@ string VSPAEROMgrSingleton::ComputeSolver(FILE * outputFile)
     }
 }
 
-void VSPAEROMgrSingleton::AddResultHeader( string res_id, double mach, double alpha, double beta )
+/* ComputeSolverBatch(FILE * logFile)
+*/
+string VSPAEROMgrSingleton::ComputeSolverBatch( FILE * logFile )
+{
+    std::vector <string> res_id_vector;
+
+    Vehicle *veh = VehicleMgr.GetVehicle();
+
+    if ( veh )
+    {
+
+        string adbFileName = m_AdbFile;
+        string historyFileName = m_HistoryFile;
+        string loadFileName = m_LoadFile;
+        string stabFileName = m_StabFile;
+        string modelNameBase = m_ModelNameBase;
+
+        bool stabilityFlag = m_StabilityCalcFlag.Get();
+        vsp::VSPAERO_ANALYSIS_METHOD analysisMethod = ( vsp::VSPAERO_ANALYSIS_METHOD )m_AnalysisMethod.Get();
+
+        int ncpu = m_NCPU.Get();
+
+        int wakeAvgStartIter = m_WakeAvgStartIter.Get();
+        int wakeSkipUntilIter = m_WakeSkipUntilIter.Get();
+
+
+        //====== Modify/Update the setup file ======//
+        if ( !FileExist( m_SetupFile ) || m_ForceNewSetupfile.Get() )
+        {
+            // if the setup file doesn't exist, create one with the current settings
+            // TODO output a warning to the user that we are creating a default file
+            CreateSetupFile();
+        }
+
+        vector<double> alphaVec;
+        vector<double> betaVec;
+        vector<double> machVec;
+        GetSweepVectors( alphaVec, betaVec, machVec );
+
+        //====== Clear VSPAERO output files ======//
+        if ( FileExist( adbFileName ) )
+        {
+            remove( adbFileName.c_str() );
+        }
+        if ( FileExist( historyFileName ) )
+        {
+            remove( historyFileName.c_str() );
+        }
+        if ( FileExist( loadFileName ) )
+        {
+            remove( loadFileName.c_str() );
+        }
+        if ( FileExist( stabFileName ) )
+        {
+            remove( stabFileName.c_str() );
+        }
+
+        //====== generate batch mode command to be executed by the system at the command prompt ======//
+        vector<string> args;
+        // Set mach, alpha, beta (save to local "current*" variables to use as header information in the results manager)
+        args.push_back( "-fs" );       // "freestream" override flag
+
+        //====== Loop over flight conditions and solve ======//
+        // Mach
+        for ( int iMach = 0; iMach < machVec.size(); iMach++ )
+        {
+            args.push_back( StringUtil::double_to_string( machVec[iMach], "%f " ) );
+        }
+        args.push_back( "END" );
+        // Alpha
+        for ( int iAlpha = 0; iAlpha < alphaVec.size(); iAlpha++ )
+        {
+            args.push_back( StringUtil::double_to_string( alphaVec[iAlpha], "%f " ) );
+        }
+        args.push_back( "END" );
+        // Beta
+        for ( int iBeta = 0; iBeta < betaVec.size(); iBeta++ )
+        {
+            args.push_back( StringUtil::double_to_string( betaVec[iBeta], "%f " ) );
+        }
+        args.push_back( "END" );
+
+        // Set number of openmp threads
+        args.push_back( "-omp" );
+        args.push_back( StringUtil::int_to_string( m_NCPU.Get(), "%d" ) );
+        // Set stability run arguments
+        if ( stabilityFlag )
+        {
+            args.push_back( "-stab" );
+        }
+        // Force averaging startign at wake iteration N
+        if( wakeAvgStartIter >= 1 )
+        {
+            args.push_back( "-avg" );
+            args.push_back( StringUtil::int_to_string( wakeAvgStartIter, "%d" ) );
+        }
+        if( wakeSkipUntilIter >= 1 )
+        {
+            // No wake for first N iterations
+            args.push_back( "-nowake" );
+            args.push_back( StringUtil::int_to_string( wakeSkipUntilIter, "%d" ) );
+        }
+
+        // Add model file name
+        args.push_back( modelNameBase );
+
+        //Print out execute command
+        string cmdStr = m_SolverProcess.PrettyCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
+        if( logFile )
+        {
+            fprintf( logFile, "%s", cmdStr.c_str() );
+        }
+        else
+        {
+            MessageData data;
+            data.m_String = "VSPAEROSolverMessage";
+            data.m_StringVec.push_back( cmdStr );
+            MessageMgr::getInstance().Send( "ScreenMgr", NULL, data );
+        }
+
+        // Execute VSPAero
+        m_SolverProcess.ForkCmd( veh->GetExePath(), veh->GetVSPAEROCmd(), args );
+
+        // ==== MonitorSolverProcess ==== //
+        MonitorSolver( logFile );
+
+
+        // Check if the kill solver flag has been raised, if so clean up and return
+        //  note: we could have exited the IsRunning loop if the process was killed
+        if( m_SolverProcessKill )
+        {
+            m_SolverProcessKill = false;    //reset kill flag
+
+            return string();    //return empty result ID vector
+        }
+
+        //====== Read in all of the results ======//
+        ReadHistoryFile( historyFileName, res_id_vector, analysisMethod );
+        ReadLoadFile( loadFileName, res_id_vector, analysisMethod );
+        if ( stabilityFlag )
+        {
+            ReadStabFile( stabFileName, res_id_vector, analysisMethod );      //*.STAB stability coeff file
+        }
+
+        // Send the message to update the screens
+        MessageData data;
+        data.m_String = "UpdateAllScreens";
+        MessageMgr::getInstance().Send( "ScreenMgr", NULL, data );
+
+    }
+
+    // Create "wrapper" result to contain a vector of result IDs (this maintains compatibility to return a single result after computation)
+    Results *res = ResultsMgr.CreateResults( "VSPAERO_Wrapper" );
+    if( !res )
+    {
+        return string();
+    }
+    else
+    {
+        res->Add( NameValData( "ResultsVec", res_id_vector ) );
+        return res->GetID();
+    }
+}
+
+void VSPAEROMgrSingleton::MonitorSolver( FILE * logFile )
+{
+    // ==== MonitorSolverProcess ==== //
+    int bufsize = 1000;
+    char *buf;
+    buf = ( char* ) malloc( sizeof( char ) * ( bufsize + 1 ) );
+    unsigned long nread = 1;
+    bool runflag = m_SolverProcess.IsRunning();
+    while ( runflag || nread > 0 )
+    {
+        m_SolverProcess.ReadStdoutPipe( buf, bufsize, &nread );
+        if( nread > 0 )
+        {
+            if ( buf )
+            {
+                buf[nread] = 0;
+                StringUtil::change_from_to( buf, '\r', '\n' );
+                if( logFile )
+                {
+                    fprintf( logFile, "%s", buf );
+                }
+                else
+                {
+                    MessageData data;
+                    data.m_String = "VSPAEROSolverMessage";
+                    data.m_StringVec.push_back( string( buf ) );
+                    MessageMgr::getInstance().Send( "ScreenMgr", NULL, data );
+                }
+            }
+        }
+
+        SleepForMilliseconds( 100 );
+        runflag = m_SolverProcess.IsRunning();
+    }
+}
+
+void VSPAEROMgrSingleton::AddResultHeader( string res_id, double mach, double alpha, double beta, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod )
 {
     // Add Flow Condition header to each result
     Results * res = ResultsMgr.FindResultsPtr( res_id );
-    res->Add( NameValData( "FC_Mach", mach ) );
-    res->Add( NameValData( "FC_Alpha", alpha ) );
-    res->Add( NameValData( "FC_Beta", beta ) );
+    if ( res )
+    {
+        res->Add( NameValData( "AnalysisMethod", analysisMethod ) );
+    }
 }
 
 // helper thread functions for VSPAERO GUI interface and multi-threaded impleentation
@@ -667,144 +1018,144 @@ void VSPAEROMgrSingleton::WaitForFile( string filename )
 
 /*******************************************************
 Read .HISTORY file output from VSPAERO
+analysisMethod is passed in because the parm it is set by might change by the time we are done calculating the solution
 See: VSP_Solver.C in vspaero project
 line 4351 - void VSP_SOLVER::OutputStatusFile(int Type)
 line 4407 - void VSP_SOLVER::OutputZeroLiftDragToStatusFile(void)
 TODO:
 - Update this function to use the generic table read as used in: string VSPAEROMgrSingleton::ReadStabFile()
 *******************************************************/
-string VSPAEROMgrSingleton::ReadHistoryFile()
+void VSPAEROMgrSingleton::ReadHistoryFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod )
 {
-    string res_id;
     //TODO return success or failure
     FILE *fp = NULL;
-    size_t result;
+    //size_t result;
     bool read_success = false;
 
-    //Read setup file to get number of wakeiterations
-    fp = fopen( m_SetupFile.c_str(), "r" );
+    //HISTORY file
+    WaitForFile( filename );
+    fp = fopen( filename.c_str(), "r" );
     if ( fp == NULL )
     {
-        fputs ( "VSPAEROMgrSingleton::ReadHistoryFile() - File open error\n", stderr );
+        fprintf( stderr, "ERROR %d: Could not open History file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_DOES_NOT_EXIST, m_HistoryFile.c_str(), __FILE__, __LINE__ );
+        return;
     }
-    else
+
+    Results* res = NULL;
+    std::vector<string> data_string_array;
+
+    char seps[]   = " :,\t\n";
+    while ( !feof( fp ) )
     {
-        // find the 'WakeIters' token
-        char key[] = "WakeIters";
-        char param[30];
-        float param_val = 0;
-        int n_wakeiters = -1;
-        bool found = false;
-        while ( !feof( fp ) & !found )
+        data_string_array = ReadDelimLine( fp, seps ); //this is also done in some of the embedded loops below
+
+        if ( CheckForCaseHeader( data_string_array ) )
         {
-            if( fscanf( fp, "%s = %f\n", param, &param_val ) == 2 )
+            res = ResultsMgr.CreateResults( "VSPAERO_History" );
+            res_id_vector.push_back( res->GetID() );
+
+            if ( ReadVSPAEROCaseHeader( res, fp, analysisMethod ) != 0 )
             {
-                if( strcmp( key, param ) == 0 )
-                {
-                    n_wakeiters = ( int )param_val;
-                    found = true;
-                }
+                // Failed to read the case header
+                fprintf( stderr, "ERROR %d: Could not read case header in VSPAERO file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_READ_FAILURE, m_StabFile.c_str(), __FILE__, __LINE__ );
+                return;
             }
+
         }
-        fclose( fp );
 
-        //HISTORY file
-        WaitForFile( m_HistoryFile );
-        fp = fopen( m_HistoryFile.c_str(), "r" );
-        if ( fp == NULL )
+        //READ wake iteration table
+        /* Example wake iteration table
+        Iter      Mach       AoA      Beta       CL         CDo       CDi      CDtot      CS        L/D        E        CFx       CFy       CFz       CMx       CMy       CMz       T/QS
+        1   0.00000   1.00000   0.00000   0.03329   0.00364   0.00009   0.00373  -0.00000   8.93773 395.42033  -0.00049  -0.00000   0.03329  -0.00000  -0.09836  -0.00000   0.00000
+        2   0.00000   1.00000   0.00000   0.03329   0.00364   0.00009   0.00373  -0.00000   8.93494 394.87228  -0.00049  -0.00000   0.03328  -0.00000  -0.09834  -0.00000   0.00000
+        ...
+        */
+        int wake_iter_table_columns = 18;
+        if( data_string_array.size() == wake_iter_table_columns )
         {
-            fputs ( "VSPAEROMgrSingleton::ReadHistoryFile() - File open error\n", stderr );
-        }
-        else
-        {
-            // Read header line - we don't ever use this it's just a way to move the file pointer
-            // TODO - use the fields in the header string as the parameter names in the results manager
-            char headerstr [256];
-            fgets( headerstr, 255, fp );
-            // split headerstr into fieldnames
-            std::vector<string>fieldnames;
-            int n_fields = 0;
-            char * pch;
-            pch = strtok ( headerstr, " " );
-            while ( pch != NULL )
+            //discard the header row and read the next line assuming that it is numeric
+            data_string_array = ReadDelimLine( fp, seps );
+
+            // create new vectors for this set of results information
+            std::vector<int> i;
+            std::vector<double> Mach;
+            std::vector<double> Alpha;
+            std::vector<double> Beta;
+            std::vector<double> CL;
+            std::vector<double> CDo;
+            std::vector<double> CDi;
+            std::vector<double> CDtot;
+            std::vector<double> CS;
+            std::vector<double> LoD;
+            std::vector<double> E;
+            std::vector<double> CFx;
+            std::vector<double> CFy;
+            std::vector<double> CFz;
+            std::vector<double> CMx;
+            std::vector<double> CMy;
+            std::vector<double> CMz;
+            std::vector<double> ToQS;
+
+            while ( data_string_array.size() == wake_iter_table_columns )
             {
-                n_fields++;
-                fieldnames.push_back( pch );
-                pch = strtok ( NULL, " " );
+                i.push_back(        std::stoi( data_string_array[0] ) );
+
+                Mach.push_back(     std::stod( data_string_array[1] ) );
+                Alpha.push_back(    std::stod( data_string_array[2] ) );
+                Beta.push_back(     std::stod( data_string_array[3] ) );
+
+                CL.push_back(       std::stod( data_string_array[4] ) );
+                CDo.push_back(      std::stod( data_string_array[5] ) );
+                CDi.push_back(      std::stod( data_string_array[6] ) );
+                CDtot.push_back(    std::stod( data_string_array[7] ) );
+                CS.push_back(       std::stod( data_string_array[8] ) );
+
+                LoD.push_back(      std::stod( data_string_array[9] ) );
+                E.push_back(        std::stod( data_string_array[10] ) );
+
+                CFx.push_back(      std::stod( data_string_array[11] ) );
+                CFy.push_back(      std::stod( data_string_array[12] ) );
+                CFz.push_back(      std::stod( data_string_array[13] ) );
+
+                CMx.push_back(      std::stod( data_string_array[14] ) );
+                CMy.push_back(      std::stod( data_string_array[15] ) );
+                CMz.push_back(      std::stod( data_string_array[16] ) );
+
+                ToQS.push_back(     std::stod( data_string_array[17] ) );
+
+                data_string_array = ReadDelimLine( fp, seps );
             }
-
-
-            // Read wake iter data
-            std::vector<int> i;                 i.assign( n_wakeiters, 0 );
-            std::vector<double> Mach;           Mach.assign( n_wakeiters, 0 );
-            std::vector<double> Alpha;          Alpha.assign( n_wakeiters, 0 );
-            std::vector<double> Beta;           Beta.assign( n_wakeiters, 0 );
-            std::vector<double> CL;             CL.assign( n_wakeiters, 0 );
-            std::vector<double> CDo;            CDo.assign( n_wakeiters, 0 );
-            std::vector<double> CDi;            CDi.assign( n_wakeiters, 0 );
-            std::vector<double> CDtot;          CDtot.assign( n_wakeiters, 0 );
-            std::vector<double> CS;             CS.assign( n_wakeiters, 0 );
-            std::vector<double> CFx;            CFx.assign( n_wakeiters, 0 );
-            std::vector<double> CFy;            CFy.assign( n_wakeiters, 0 );
-            std::vector<double> CFz;            CFz.assign( n_wakeiters, 0 );
-            std::vector<double> CMx;            CMx.assign( n_wakeiters, 0 );
-            std::vector<double> CMy;            CMy.assign( n_wakeiters, 0 );
-            std::vector<double> CMz;            CMz.assign( n_wakeiters, 0 );
-            std::vector<double> LoD;            LoD.assign( n_wakeiters, 0 );
-            std::vector<double> E;              E.assign( n_wakeiters, 0 );
-            std::vector<double> ToQS;           ToQS.assign( n_wakeiters, 0 );
-
-            // Read in all of the wake data first before adding to the results manager
-            for( int i_wake = 0; i_wake < n_wakeiters; i_wake++ )
-            {
-                //TODO - add results to results manager based on header string
-                result = fscanf( fp, "%d", &i[i_wake] );
-                result = fscanf( fp, "%lf", &Mach[i_wake] );
-                result = fscanf( fp, "%lf", &Alpha[i_wake] );
-                result = fscanf( fp, "%lf", &Beta[i_wake] );
-                result = fscanf( fp, "%lf", &CL[i_wake] );
-                result = fscanf( fp, "%lf", &CDo[i_wake] );
-                result = fscanf( fp, "%lf", &CDi[i_wake] );
-                result = fscanf( fp, "%lf", &CDtot[i_wake] );
-                result = fscanf( fp, "%lf", &CS[i_wake] );
-                result = fscanf( fp, "%lf", &LoD[i_wake] );
-                result = fscanf( fp, "%lf", &E[i_wake] );
-                result = fscanf( fp, "%lf", &CFx[i_wake] );
-                result = fscanf( fp, "%lf", &CFy[i_wake] );
-                result = fscanf( fp, "%lf", &CFz[i_wake] );
-                result = fscanf( fp, "%lf", &CMx[i_wake] );
-                result = fscanf( fp, "%lf", &CMy[i_wake] );
-                result = fscanf( fp, "%lf", &CMz[i_wake] );
-                result = fscanf( fp, "%lf", &ToQS[i_wake] );
-            }
-            fclose ( fp );
 
             //add to the results manager
-            Results* res = ResultsMgr.CreateResults( "VSPAERO_History" );
-            res->Add( NameValData( "WakeIter", i ) );
-            res->Add( NameValData( "Mach", Mach ) );
-            res->Add( NameValData( "Alpha", Alpha ) );
-            res->Add( NameValData( "Beta", Beta ) );
-            res->Add( NameValData( "CL", CL ) );
-            res->Add( NameValData( "CDo", CDo ) );
-            res->Add( NameValData( "CDi", CDi ) );
-            res->Add( NameValData( "CDtot", CDtot ) );
-            res->Add( NameValData( "CS", CS ) );
-            res->Add( NameValData( "L/D", LoD ) );
-            res->Add( NameValData( "E", E ) );
-            res->Add( NameValData( "CFx", CFx ) );
-            res->Add( NameValData( "CFy", CFy ) );
-            res->Add( NameValData( "CFz", CFz ) );
-            res->Add( NameValData( "CMx", CMx ) );
-            res->Add( NameValData( "CMy", CMy ) );
-            res->Add( NameValData( "CMz", CMz ) );
-            res->Add( NameValData( "T/QS", ToQS ) );
+            if ( res )
+            {
+                res->Add( NameValData( "WakeIter", i ) );
+                res->Add( NameValData( "Mach", Mach ) );
+                res->Add( NameValData( "Alpha", Alpha ) );
+                res->Add( NameValData( "Beta", Beta ) );
+                res->Add( NameValData( "CL", CL ) );
+                res->Add( NameValData( "CDo", CDo ) );
+                res->Add( NameValData( "CDi", CDi ) );
+                res->Add( NameValData( "CDtot", CDtot ) );
+                res->Add( NameValData( "CS", CS ) );
+                res->Add( NameValData( "L/D", LoD ) );
+                res->Add( NameValData( "E", E ) );
+                res->Add( NameValData( "CFx", CFx ) );
+                res->Add( NameValData( "CFy", CFy ) );
+                res->Add( NameValData( "CFz", CFz ) );
+                res->Add( NameValData( "CMx", CMx ) );
+                res->Add( NameValData( "CMy", CMy ) );
+                res->Add( NameValData( "CMz", CMz ) );
+                res->Add( NameValData( "T/QS", ToQS ) );
+            }
 
-            res_id = res->GetID();
-        }
-    }
+        } // end of wake iteration
 
-    return res_id;
+    } //end feof loop to read entire history file
+
+    fclose ( fp );
+
+    return;
 }
 
 /*******************************************************
@@ -815,182 +1166,199 @@ TODO:
 - Update this function to use the generic table read as used in: string VSPAEROMgrSingleton::ReadStabFile()
 - Read in Component table information, this is the 2nd table at the bottom of the .lod file
 *******************************************************/
-string VSPAEROMgrSingleton::ReadLoadFile()
+void VSPAEROMgrSingleton::ReadLoadFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod )
 {
-    string res_id;
-
     FILE *fp = NULL;
-    size_t result;
     bool read_success = false;
 
     //LOAD file
-    WaitForFile( m_LoadFile );
-    fp = fopen( m_LoadFile.c_str(), "r" );
+    WaitForFile( filename );
+    fp = fopen( filename.c_str(), "r" );
     if ( fp == NULL )
     {
-        fputs ( "VSPAEROMgrSingleton::ReadLoadFile() - File open error\n", stderr );
+        fprintf( stderr, "ERROR %d: Could not open Load file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_DOES_NOT_EXIST, m_LoadFile.c_str(), __FILE__, __LINE__ );
+        return;
     }
-    else
+
+    Results* res = NULL;
+    std::vector< std::string > data_string_array;
+    std::vector< std::vector< double > > data_array;
+
+    double cref;
+
+    char seps[]   = " :,\t\n";
+    while ( !feof( fp ) )
     {
-        // Read header line - we don't ever use this it's just a way to move the file pointer
-        // TODO - use the fields in the header string as the parameter names in the results manager
-        std::vector<string>fieldnames;
-        char strbuff[1024];                // buffer for entire line in file
-        char * pch;
-        fgets( strbuff, 1024, fp );
-        pch = strtok ( strbuff, " " );
-        while ( pch != NULL )
+        data_string_array = ReadDelimLine( fp, seps ); //this is also done in some of the embedded loops below
+
+        if ( CheckForCaseHeader( data_string_array ) )
         {
-            fieldnames.push_back( pch );
-            pch = strtok ( NULL, " " );
+            res = ResultsMgr.CreateResults( "VSPAERO_Load" );
+            res_id_vector.push_back( res->GetID() );
+
+            if ( ReadVSPAEROCaseHeader( res, fp, analysisMethod ) != 0 )
+            {
+                // Failed to read the case header
+                fprintf( stderr, "ERROR %d: Could not read case header in VSPAERO file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_READ_FAILURE, m_StabFile.c_str(), __FILE__, __LINE__ );
+                return;
+            }
+
+            cref = res->FindPtr( "FC_Cref_" )->GetDouble( 0 );
+
         }
 
-        std::vector<int> WingId;
-        std::vector<double> Yavg;
-        std::vector<double> Chord;
-        std::vector<double> CL;
-        std::vector<double> CD;
-        std::vector<double> CS;
-
-        std::vector<double> CLc_cref;
-        std::vector<double> CDc_cref;
-        std::vector<double> CSc_cref;
-        //std::vector<double> CLc_ideal;  // TODO represents elliptical load distribution
-
-        int t_WingId;
-        double t_Yavg;
-        double t_Chord;
-        double t_CL;
-        double t_CD;
-        double t_CS;
-
-        //READ and ADD to the results manager
-        Results* res = ResultsMgr.CreateResults( "VSPAERO_Load" );
-        result = fscanf( fp, "%d %lf %lf %lf %lf %lf", &t_WingId, &t_Yavg, &t_Chord, &t_CL, &t_CD, &t_CS );
-        while ( result == fieldnames.size() - 1 )
+        // Sectional distribution table
+        int nSectionalDataTableCols = 13;
+        if ( data_string_array.size() == nSectionalDataTableCols )
         {
+            //discard the header row and read the next line assuming that it is numeric
+            data_string_array = ReadDelimLine( fp, seps );
 
-            WingId.push_back( t_WingId );
-            Yavg.push_back( t_Yavg );
-            Chord.push_back( t_Chord );
-            CL.push_back( t_CL );
-            CD.push_back( t_CD );
-            CS.push_back( t_CS );
+            // Raw data vectors
+            std::vector<int> WingId;
+            std::vector<double> Yavg;
+            std::vector<double> Chord;
+            std::vector<double> VoVinf;
+            std::vector<double> Cl;
+            std::vector<double> Cd;
+            std::vector<double> Cs;
+            std::vector<double> Cx;
+            std::vector<double> Cy;
+            std::vector<double> Cz;
+            std::vector<double> Cmx;
+            std::vector<double> Cmy;
+            std::vector<double> Cmz;
 
-            CLc_cref.push_back( t_CL * t_Chord / m_cref.Get() );
-            CDc_cref.push_back( t_CD * t_Chord / m_cref.Get() );
-            CSc_cref.push_back( t_CS * t_Chord / m_cref.Get() );
+            //normalized by local chord
+            std::vector<double> Clc_cref;
+            std::vector<double> Cdc_cref;
+            std::vector<double> Csc_cref;
+            std::vector<double> Cxc_cref;
+            std::vector<double> Cyc_cref;
+            std::vector<double> Czc_cref;
+            std::vector<double> Cmxc_cref;
+            std::vector<double> Cmyc_cref;
+            std::vector<double> Cmzc_cref;
 
-            // read the next line
-            result = fscanf( fp, "%d %lf %lf %lf %lf %lf", &t_WingId, &t_Yavg, &t_Chord, &t_CL, &t_CD, &t_CS );
-        }
-        fclose ( fp );
+            double chordRatio;
 
-        // add to results manager
-        res->Add( NameValData( "WingId", WingId ) );
-        res->Add( NameValData( "Yavg", Yavg ) );
-        res->Add( NameValData( "Chord", Chord ) );
-        res->Add( NameValData( "cl", CL ) );
-        res->Add( NameValData( "cd", CD ) );
-        res->Add( NameValData( "cs", CS ) );
+            // read the data rows
+            while ( data_string_array.size() == nSectionalDataTableCols )
+            {
+                // Store the raw data
+                WingId.push_back( std::stoi( data_string_array[0] ) );
+                Yavg.push_back(   std::stod( data_string_array[1] ) );
+                Chord.push_back(  std::stod( data_string_array[2] ) );
+                VoVinf.push_back( std::stod( data_string_array[3] ) );
+                Cl.push_back(     std::stod( data_string_array[4] ) );
+                Cd.push_back(     std::stod( data_string_array[5] ) );
+                Cs.push_back(     std::stod( data_string_array[6] ) );
+                Cx.push_back(     std::stod( data_string_array[7] ) );
+                Cy.push_back(     std::stod( data_string_array[8] ) );
+                Cz.push_back(     std::stod( data_string_array[9] ) );
+                Cmx.push_back(    std::stod( data_string_array[10] ) );
+                Cmy.push_back(    std::stod( data_string_array[11] ) );
+                Cmz.push_back(    std::stod( data_string_array[12] ) );
 
-        res->Add( NameValData( "cl*c/cref", CLc_cref ) );
-        res->Add( NameValData( "cd*c/cref", CDc_cref ) );
-        res->Add( NameValData( "cs*c/cref", CSc_cref ) );
+                chordRatio = Chord.back() / cref;
 
-        res_id = res->GetID();
-    }
+                // Normalized by local chord
+                Clc_cref.push_back( Cl.back() * chordRatio );
+                Cdc_cref.push_back( Cd.back() * chordRatio );
+                Csc_cref.push_back( Cs.back() * chordRatio );
+                Cxc_cref.push_back( Cx.back() * chordRatio );
+                Cyc_cref.push_back( Cy.back() * chordRatio );
+                Czc_cref.push_back( Cz.back() * chordRatio );
+                Cmxc_cref.push_back( Cmx.back() * chordRatio );
+                Cmyc_cref.push_back( Cmy.back() * chordRatio );
+                Cmzc_cref.push_back( Cmz.back() * chordRatio );
 
-    return res_id;
+                // Read the next line and loop
+                data_string_array = ReadDelimLine( fp, seps );
+            }
+
+            // Finish up by adding the data to the result res
+            res->Add( NameValData( "WingId", WingId ) );
+            res->Add( NameValData( "Yavg", Yavg ) );
+            res->Add( NameValData( "Chord", Chord ) );
+            res->Add( NameValData( "V/Vinf", Chord ) );
+            res->Add( NameValData( "cl", Cl ) );
+            res->Add( NameValData( "cd", Cd ) );
+            res->Add( NameValData( "cs", Cs ) );
+            res->Add( NameValData( "cx", Cx ) );
+            res->Add( NameValData( "cy", Cy ) );
+            res->Add( NameValData( "cz", Cz ) );
+            res->Add( NameValData( "cmx", Cmx ) );
+            res->Add( NameValData( "cmy", Cmy ) );
+            res->Add( NameValData( "cmz", Cmz ) );
+
+            res->Add( NameValData( "cl*c/cref", Clc_cref ) );
+            res->Add( NameValData( "cd*c/cref", Cdc_cref ) );
+            res->Add( NameValData( "cs*c/cref", Csc_cref ) );
+            res->Add( NameValData( "cx*c/cref", Cxc_cref ) );
+            res->Add( NameValData( "cy*c/cref", Cyc_cref ) );
+            res->Add( NameValData( "cz*c/cref", Czc_cref ) );
+            res->Add( NameValData( "cmx*c/cref", Cmxc_cref ) );
+            res->Add( NameValData( "cmy*c/cref", Cmyc_cref ) );
+            res->Add( NameValData( "cmz*c/cref", Cmzc_cref ) );
+
+        } // end sectional table read
+
+    } // end file loop
+
+    std::fclose ( fp );
+
+    return;
 }
 
 /*******************************************************
 Read .STAB file output from VSPAERO
 See: VSP_Solver.C in vspaero project
 *******************************************************/
-string VSPAEROMgrSingleton::ReadStabFile()
+void VSPAEROMgrSingleton::ReadStabFile( string filename, vector <string> &res_id_vector, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod )
 {
-    string res_id;
-
     FILE *fp = NULL;
-    size_t result;
     bool read_success = false;
-    fp = fopen( m_StabFile.c_str() , "r" );
+    WaitForFile( filename );
+    fp = fopen( filename.c_str() , "r" );
     if ( fp == NULL )
     {
-        fputs ( "VSPAEROMgrSingleton::ReadStabFile() - File open error\n", stderr );
+        fprintf( stderr, "ERROR %d: Could not open Stab file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_DOES_NOT_EXIST, m_StabFile.c_str(), __FILE__, __LINE__ );
+        return;
     }
-    else
+
+    Results* res = NULL;
+
+    std::vector<string> table_column_names;
+    std::vector<string> data_string_array;
+
+    // Read in all of the data into the results manager
+    char seps[]   = " :,\t\n";
+    while ( !feof( fp ) )
     {
-        Results* res = ResultsMgr.CreateResults( "VSPAERO_Stab" );
+        data_string_array = ReadDelimLine( fp, seps ); //this is also done in some of the embedded loops below
 
-        /* Read top header sectio.  Example:
-            Sref_:      45.0000
-            Cref_:       2.5000
-            Bref_:      18.0000
-            Xcg_:        0.0000
-            Ycg_:        0.0000
-            Zcg_:        0.0000
-            AoA:         4.0000
-            Beta_:      -3.0000
-            Mach_:       0.4000
-            Rho_:        0.0024
-            Vinf_:     100.0000
-        #
-        */
-        float value;
-        char strbuff[1024];
-        result = fscanf( fp, "%s%f\n", strbuff, &value );
-        while ( result == 2 )
+        if ( CheckForCaseHeader( data_string_array ) )
         {
-            // format and add name/value pair to the results manager
-            string name = strbuff;
-            size_t pos = name.find( "_" ); // find and erase underscore
-            if ( pos != std::string::npos )
-            {
-                name.erase( pos );
-            }
-            pos = name.find( ":" ); //find and erase :
-            if ( pos != std::string::npos )
-            {
-                name.erase( pos );
-            }
-            res->Add( NameValData( name, value ) );
+            res = ResultsMgr.CreateResults( "VSPAERO_Stab" );
+            res_id_vector.push_back( res->GetID() );
 
-            // read the next value
-            result = fscanf( fp, "%s%f\n", strbuff, &value );
+            if ( ReadVSPAEROCaseHeader( res, fp, analysisMethod ) != 0 )
+            {
+                // Failed to read the case header
+                fprintf( stderr, "ERROR %d: Could not read case header in VSPAERO file: %s\n\tFile: %s \tLine:%d\n", vsp::VSP_FILE_READ_FAILURE, m_StabFile.c_str(), __FILE__, __LINE__ );
+                return;
+            }
         }
-
-        /* Read the available data tables
-        Example:
-
-        */
-        std::vector<string> table_column_names;
-        std::vector<string> data_string_array;
-        char * pch;
-        // Read in all of the data into the results manager
-        while ( !feof( fp ) )
+        else if ( data_string_array.size() > 0 )
         {
-            // Read entire line
-            char strbuff2[1024];
-            fgets( strbuff2, 1023, fp );
-            strcpy( strbuff, " " );
-            strcat( strbuff, strbuff2 );
-
             // Parse if this is not a comment line
-            if ( strncmp( strbuff2, "#", 1 ) != 0 )
+            if ( res && strncmp( data_string_array[0].c_str(), "#", 1 ) != 0 )
             {
-                // Split space delimited string
-                data_string_array.clear();
-                pch = strtok ( strbuff, " " );
-                while ( pch != NULL )
-                {
-                    data_string_array.push_back( pch );
-                    pch = strtok ( NULL, " " );
-                }
 
-                // Checks for header format
-                if ( ( data_string_array.size() != table_column_names.size() ) | ( table_column_names.size() == 0 ) )
+                //================ Table Data ================//
+                // Checks for table header format
+                if ( ( data_string_array.size() != table_column_names.size() ) || ( table_column_names.size() == 0 ) )
                 {
                     //Indicator that the data table has changed or has not been initialized.
                     table_column_names.clear();
@@ -1001,7 +1369,7 @@ string VSPAEROMgrSingleton::ReadStabFile()
                     //This is a continuation of the current table and add this row to the results manager
                     for ( unsigned int i_field = 1; i_field < data_string_array.size() - 1; i_field++ )
                     {
-                        //convert to double
+                        //attempt to read a double if that fails then treat it as a string result
                         double temp_val = 0;
                         int result = 0;
                         result = sscanf( data_string_array[i_field].c_str(), "%lf", &temp_val );
@@ -1009,17 +1377,139 @@ string VSPAEROMgrSingleton::ReadStabFile()
                         {
                             res->Add( NameValData( data_string_array[0] + "_" + table_column_names[i_field], temp_val ) );
                         }
+                        else
+                        {
+                            res->Add( NameValData( data_string_array[0] + "_" + table_column_names[i_field], data_string_array[i_field] ) );
+                        }
                     }
                 } //end new table check
+
             } // end comment line check
-        } //end for while !feof(fp)
 
+        } // end data_string_array.size()>0 check
 
-        fclose ( fp );
-        res_id = res->GetID();
+    } //end for while !feof(fp)
+
+    std::fclose ( fp );
+
+    return;
+}
+
+vector <string> VSPAEROMgrSingleton::ReadDelimLine( FILE * fp, char * delimeters )
+{
+
+    vector <string> dataStringVector;
+    dataStringVector.clear();
+
+    char strbuff[1024];                // buffer for entire line in file
+    if ( fgets( strbuff, 1024, fp ) != NULL )
+    {
+        char * pch = strtok ( strbuff, delimeters );
+        while ( pch != NULL )
+        {
+            dataStringVector.push_back( pch );
+            pch = strtok ( NULL, delimeters );
+        }
     }
 
-    return res_id;
+    return dataStringVector;
+}
+
+bool VSPAEROMgrSingleton::CheckForCaseHeader( std::vector<string> headerStr )
+{
+    if ( headerStr.size() == 1 )
+    {
+        if ( strcmp( headerStr[0].c_str(), "*****************************************************************************************************************************************************************************************" ) == 0 )
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+int VSPAEROMgrSingleton::ReadVSPAEROCaseHeader( Results * res, FILE * fp, vsp::VSPAERO_ANALYSIS_METHOD analysisMethod )
+{
+    // check input arguments
+    if ( res == NULL )
+    {
+        // Bad pointer
+        fprintf( stderr, "ERROR %d: Invalid results pointer\n\tFile: %s \tLine:%d\n", vsp::VSP_INVALID_PTR, __FILE__, __LINE__ );
+        return -1;
+    }
+    if ( fp == NULL )
+    {
+        // Bad pointer
+        fprintf( stderr, "ERROR %d: Invalid file pointer\n\tFile: %s \tLine:%d\n", vsp::VSP_INVALID_PTR, __FILE__, __LINE__ );
+        return -2;
+    }
+
+    char seps[]   = " :,\t\n";
+    std::vector<string> data_string_array;
+
+    //skip any blank lines before the header
+    while ( !feof( fp ) && data_string_array.size() == 0 )
+    {
+        data_string_array = ReadDelimLine( fp, seps ); //this is also done in some of the embedded loops below
+    }
+
+    // Read header table
+    bool needs_header = true;
+    bool mach_found = false;
+    bool alpha_found = false;
+    bool beta_found = false;
+    double current_mach = -FLT_MAX;
+    double current_alpha = -FLT_MAX;
+    double current_beta = -FLT_MAX;
+    double value;
+    while ( !feof( fp ) && data_string_array.size() > 0 )
+    {
+        // Parse if this is not a comment line
+        if ( ( strncmp( data_string_array[0].c_str(), "#", 1 ) != 0 ) && ( data_string_array.size() == 3 ) )
+        {
+            // assumption that the 2nd entry is a number
+            if ( sscanf( data_string_array[1].c_str(), "%lf", &value ) == 1 )
+            {
+                res->Add( NameValData( "FC_" + data_string_array[0], value ) );
+
+                // save flow condition information to be added to the header later
+                if ( strcmp( data_string_array[0].c_str(), "Mach_" ) == 0 )
+                {
+                    current_mach = value;
+                    mach_found = true;
+                }
+                if ( strcmp( data_string_array[0].c_str(), "AoA_" ) == 0 )
+                {
+                    current_alpha = value;
+                    alpha_found = true;
+                }
+                if ( strcmp( data_string_array[0].c_str(), "Beta_" ) == 0 )
+                {
+                    current_beta = value;
+                    beta_found = true;
+                }
+
+                // check if the information needed for the result header has been read in
+                if ( mach_found && alpha_found && beta_found && needs_header )
+                {
+                    AddResultHeader( res->GetID(), current_mach, current_alpha, current_beta, analysisMethod );
+                    needs_header = false;
+                }
+            }
+        }
+
+        // read the next line
+        data_string_array = ReadDelimLine( fp, seps );
+
+    } // end while
+
+    if ( needs_header )
+    {
+        fprintf( stderr, "WARNING: Case header incomplete \n\tFile: %s \tLine:%d\n", __FILE__, __LINE__ );
+        return -3;
+    }
+
+    return 0; // no errors
 }
 
 //Export Results to CSV
@@ -1029,18 +1519,22 @@ string VSPAEROMgrSingleton::ReadStabFile()
 // TODO make return values into enum
 int VSPAEROMgrSingleton::ExportResultsToCSV( string fileName )
 {
+    int retVal;
+
     // Get the results
-    string resId = ResultsMgr.FindResultsID( "VSPAERO_Wrapper",  0 );
-    Results* resptr = ResultsMgr.FindResultsPtr( resId );
-    if ( !resptr )
+    string resId = ResultsMgr.FindLatestResultsID( "VSPAERO_Wrapper" );
+    if ( resId != string() )
     {
-        printf( "WriteResultsCSVFile::Invalid ID %s", resId.c_str() );
-        return -1;
+        // Get all the child results
+        vector <string> resIdVector = ResultsMgr.GetStringResults( resId, "ResultsVec" );
+        retVal = ResultsMgr.WriteCSVFile( fileName, resIdVector );
+    }
+    else
+    {
+        fprintf( stderr, "ERROR %d: Unable to get VSPAERO_Wrapper result \n\tFile: %s \tLine:%d\n", vsp::VSP_CANT_FIND_NAME, __FILE__, __LINE__ );
+        retVal = vsp::VSP_CANT_FIND_NAME; //failure
     }
 
-    //Write the output file
-    vector <string> resIdVector = ResultsMgr.GetStringResults( resId, "ResultsVec" );
-    ResultsMgr.WriteCSVFile( fileName, resIdVector );
-
-    return 0; //success
+    return retVal;
 }
+

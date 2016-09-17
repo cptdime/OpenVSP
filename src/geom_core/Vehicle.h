@@ -27,6 +27,7 @@
 #include "XferSurf.h"
 #include "MaterialMgr.h"
 #include "WaveDragMgr.h"
+#include "GroupTransformations.h"
 
 #include <assert.h>
 
@@ -197,6 +198,7 @@ public:
     void WriteSTEPFile( const string & file_name, int write_set );
     void WriteIGESFile( const string & file_name, int write_set );
     void WriteBEMFile( const string & file_name, int write_set );
+    void WriteDXFFile( const string & file_name, int write_set );
 
     void FetchXFerSurfs( int write_set, vector< XferSurf > &xfersurfs );
     //==== Computation File Names ====//
@@ -257,6 +259,12 @@ public:
         return &m_SnapTo;
     }
 
+    // ==== Getter for GroupTransformations ==== //
+    GroupTransformations* GetGroupTransformationsPtr()
+    {
+        return &m_GroupTransformations;
+    }
+
     //==== Mass Properties ====//
     vec3d m_IxxIyyIzz;
     vec3d m_IxyIxzIyz;
@@ -283,6 +291,20 @@ public:
     BoolParm m_IGESToCubic;
     Parm m_IGESToCubicTol;
 
+    IntParm m_DXFLenUnit;
+    IntParm m_2DView;
+    IntParm m_2D3DFlag;
+    BoolParm m_3DExport;
+    BoolParm m_2DExport;
+    IntParm m_4View1;
+    IntParm m_4View2;
+    IntParm m_4View3;
+    IntParm m_4View4;
+    IntParm m_4View1_rot;
+    IntParm m_4View2_rot;
+    IntParm m_4View3_rot;
+    IntParm m_4View4_rot;
+
     string m_BEMPropID;
 
     BoolParm m_STLMultiSolid;
@@ -291,6 +313,8 @@ public:
     BoolParm m_exportDragBuildTsvFile;
     BoolParm m_exportDegenGeomCsvFile;
     BoolParm m_exportDegenGeomMFile;
+
+    Parm m_AxisLength;
 
 protected:
 
@@ -341,6 +365,9 @@ protected:
     SnapTo m_SnapTo;
 
     VehicleGuiDraw m_VGuiDraw;
+
+    // Class to handle group transformations
+    GroupTransformations m_GroupTransformations;
 
 private:
 

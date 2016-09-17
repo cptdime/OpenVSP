@@ -220,26 +220,63 @@ Matrix4d VspSurf::CompRotCoordSys( const double &u, const double &w )
 {
     Matrix4d retMat; // Return Matrix
 
-    double tempMat[16];
     // Get du and norm, cross them to get the last orthonormal vector
     vec3d du = CompTanU01( u, w );
     du.normalize();
     vec3d norm = CompNorm01( u, w ); // use CompNorm01 since normals now face outward
     norm.normalize();
+
+    if ( m_MagicVParm ) // Surfs with magic parameter treatment (wings) have added chances to degenerate
+    {
+        double tmagic01 = TMAGIC / GetWMax();
+
+        if ( du.mag() < 1e-6 ) // Zero direction vector
+        {
+            if ( w <= tmagic01 ) // Near TE lower
+            {
+                du = CompTanU01( u, tmagic01 + 1e-6 );
+                du.normalize();
+            }
+
+            if ( w >= ( 0.5 - tmagic01 ) && w <= ( 0.5 + tmagic01 ) ) // Near leading edge
+            {
+                du = CompTanU01( u, 0.5 + tmagic01 + 1e-6 );
+                du.normalize();
+            }
+
+            if ( w >= ( 1.0 - tmagic01 ) ) // Near TE upper
+            {
+                du = CompTanU01( u, 1.0 - ( tmagic01 + 1e-6 ) );
+                du.normalize();
+            }
+        }
+
+        if ( norm.mag() < 1e-6 ) // Zero normal vector
+        {
+            if ( w <= tmagic01 ) // Near TE lower
+            {
+                norm = CompNorm01( u, tmagic01 + 1e-6 );
+                norm.normalize();
+            }
+
+            if ( w >= ( 0.5 - tmagic01 ) && w <= ( 0.5 + tmagic01 ) ) // Near leading edge
+            {
+                norm = CompNorm01( u, 0.5 + tmagic01 + 1e-6 );
+                norm.normalize();
+            }
+
+            if ( w >= ( 1.0 - tmagic01 ) ) // Near TE upper
+            {
+                norm = CompNorm01( u, 1.0 - ( tmagic01 + 1e-6 ) );
+                norm.normalize();
+            }
+        }
+    }
+
     vec3d dw = cross( norm, du );
 
     // Place axes in as cols of Rot mat
-    retMat.getMat( tempMat );
-    tempMat[0] = du.x();
-    tempMat[4] = dw.x();
-    tempMat[8]  = norm.x();
-    tempMat[1] = du.y();
-    tempMat[5] = dw.y();
-    tempMat[9]  = norm.y();
-    tempMat[2] = du.z();
-    tempMat[6] = dw.z();
-    tempMat[10] = norm.z();
-    retMat.initMat( tempMat );
+    retMat.setBasis( du, dw, norm );
     return retMat;
 }
 
@@ -776,13 +813,14 @@ void VspSurf::MakeUTess( const vector<int> &num_u, vector<double> &u, const std:
 
 void VspSurf::MakeVTess( int num_v, std::vector<double> &vtess, const int &n_cap, bool degen ) const
 {
-    double vmin, vmax, vabsmin, vle, vlelow, vleup;
+    double vmin, vmax, vabsmin, vabsmax, vle, vlelow, vleup;
     surface_index_type nv( num_v );
 
     vmin = m_Surface.get_v0();
     vmax = m_Surface.get_vmax();
 
     vabsmin = vmin;
+    vabsmax = vmax;
 
     double tol = 1e-6;
 
@@ -798,13 +836,27 @@ void VspSurf::MakeVTess( int num_v, std::vector<double> &vtess, const int &n_cap
         vtess.resize(nv);
         int jle = ( nv - 1 ) / 2;
         int j = 0;
+        if ( degen )
+        {
+            vtess[j] = vabsmin;
+            j++;
+        }
         for ( ; j < jle; ++j )
         {
             vtess[j] = vmin + ( vlelow - vmin ) * Cluster( 2.0 * static_cast<double>( j ) / ( nv - 1 ), m_TECluster, m_LECluster );
         }
+        if ( degen )
+        {
+            vtess[j] = vle;
+            j++;
+        }
         for ( ; j < nv; ++j )
         {
             vtess[j] = vleup + ( vmax - vleup ) * (Cluster( 2.0 * static_cast<double>( j - jle ) / ( nv - 1 ), m_LECluster, m_TECluster ));
+        }
+        if ( degen )
+        {
+            vtess[ nv - 1 ] = vabsmax;
         }
 
         if ( degen ) // DegenGeom, don't tessellate blunt TE or LE.
@@ -943,13 +995,38 @@ void VspSurf::Tesselate( const vector<double> &u, const vector<double> &v, std::
         for ( surface_index_type j = 0; j < nv; j++ )
         {
             pnts[i][j] = ptmat[i][j];
+
+            vec3d norm = nmat[i][j];
+            if ( norm.mag() < 1e-6 ) // Zero normal vector
+            {
+                double tmax = GetWMax();
+                double thalf = 0.5 * GetWMax();
+                if ( v[j] <= TMAGIC ) // Near TE lower
+                {
+                    norm = CompNorm( u[i], TMAGIC + 1e-6 );
+                }
+                else if ( v[j] <= thalf && v[j] >= ( thalf - TMAGIC ) ) // Near leading edge
+                {
+                    norm = CompNorm( u[i], thalf - ( TMAGIC + 1e-6 ) );
+                }
+                else if ( v[j] >= thalf && v[j] <= ( thalf + TMAGIC ) ) // Near leading edge
+                {
+                    norm = CompNorm( u[i], thalf + TMAGIC + 1e-6 );
+                }
+                else if ( v[j] >= ( tmax - TMAGIC ) ) // Near TE upper
+                {
+                    norm = CompNorm( u[i], tmax - ( TMAGIC + 1e-6 ) );
+                }
+                norm.normalize();
+            }
+
             if ( m_FlipNormal )
             {
-                norms[i][j] = -nmat[i][j];
+                norms[i][j] = -1.0 * norm;
             }
             else
             {
-                norms[i][j] = nmat[i][j];
+                norms[i][j] = norm;
             }
             uw_pnts[i][j].set_xyz( u[i], v[j], 0.0 );
         }

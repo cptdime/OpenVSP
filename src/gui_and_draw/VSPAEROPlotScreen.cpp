@@ -336,7 +336,20 @@ VSPAEROPlotScreen::~VSPAEROPlotScreen()
 
 void VSPAEROPlotScreen::SetDefaultView()
 {
-    m_LoadDistTab->show();
+
+    switch ( VSPAEROMgr.m_AnalysisMethod.Get() )
+    {
+    case vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE:
+        m_LoadDistTab->show();
+        break;
+    case vsp::VSPAERO_ANALYSIS_METHOD::PANEL:
+        m_ConvergenceTab->show();
+        //m_LoadDistTab->hide();
+        break;
+    default:
+        break;
+    }
+
     m_SelectDefaultData = true;
 }
 
@@ -350,7 +363,23 @@ bool VSPAEROPlotScreen::Update()
     RedrawConvergencePlot();
     UpdateConvergenceAutoManualAxisLimits();
 
-    // Update single plot canvas
+    // Update load distribution
+    // Let's check to see what analysis method was used on the first result found
+    // note that only VSPAEROMgr clear alls VSPAERO_* results from the results manager each time it's run all analyses in the results 'should' have the same analysis method
+    string resultName = "VSPAERO_Load";
+    Results* res = ResultsMgr.FindResults( resultName, 0 );
+    if ( res )
+    {
+        // Load distribution plots are supported only in certain modes (Panel method is not currently supported)
+        if ( res->FindPtr( "AnalysisMethod" )->GetInt( 0 ) == vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE )
+        {
+            m_LoadDistTab->activate();
+        }
+        else
+        {
+            m_LoadDistTab->deactivate();
+        }
+    }
     UpdateLoadDistFlowConditionBrowser();
     UpdateLoadDistYDataBrowser();
     RedrawLoadDistPlot();
@@ -752,20 +781,24 @@ void VSPAEROPlotScreen::UpdateLoadDistFlowConditionBrowser()
         Results* res = ResultsMgr.FindResults( resultName, iCase );
         if( res )
         {
-            char strbuf[1024];
-            ConstructFlowConditionString( strbuf, res, false );
-            m_LoadDistFlowConditionBrowser->add( strbuf );
-            if( m_SelectDefaultData )   //select ALL flow conditions
+            // Load distribution plots are supported only in certain modes (Panel method is not currently supported)
+            if ( res->FindPtr( "AnalysisMethod" )->GetInt( 0 ) == vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE )
             {
-                m_LoadDistFlowConditionSelectedResultIDs.push_back( res->GetID() );
-                m_LoadDistFlowConditionBrowser->select( iCase + 1 ); //account for browser using 1-based indexing
-            }
-            else if ( iCase < wasSelected.size() ) // restore original row selections
-            {
-                if ( wasSelected[iCase] )
+                char strbuf[1024];
+                ConstructFlowConditionString( strbuf, res, false );
+                m_LoadDistFlowConditionBrowser->add( strbuf );
+                if( m_SelectDefaultData )   //select ALL flow conditions
                 {
                     m_LoadDistFlowConditionSelectedResultIDs.push_back( res->GetID() );
                     m_LoadDistFlowConditionBrowser->select( iCase + 1 ); //account for browser using 1-based indexing
+                }
+                else if ( iCase < wasSelected.size() ) // restore original row selections
+                {
+                    if ( wasSelected[iCase] )
+                    {
+                        m_LoadDistFlowConditionSelectedResultIDs.push_back( res->GetID() );
+                        m_LoadDistFlowConditionBrowser->select( iCase + 1 ); //account for browser using 1-based indexing
+                    }
                 }
             }
         }   //if( res )
@@ -828,21 +861,21 @@ void VSPAEROPlotScreen::ConstructFlowConditionString( char * strbuf, Results * r
         double beta = 0;
         double mach = 0;
 
-        nvd = res->FindPtr( "FC_Alpha" );
+        nvd = res->FindPtr( "FC_AoA_" );
         if( nvd )
         {
             dataVector = nvd->GetDoubleData();
             alpha = dataVector[dataVector.size() - 1];
         }
 
-        nvd = res->FindPtr( "FC_Beta" );
+        nvd = res->FindPtr( "FC_Beta_" );
         if( nvd )
         {
             dataVector = nvd->GetDoubleData();
             beta = dataVector[dataVector.size() - 1];
         }
 
-        nvd = res->FindPtr( "FC_Mach" );
+        nvd = res->FindPtr( "FC_Mach_" );
         if( nvd )
         {
             dataVector = nvd->GetDoubleData();
@@ -879,13 +912,12 @@ void VSPAEROPlotScreen::UpdateConvergenceYDataBrowser()
     vector < string > dataNames = ResultsMgr.GetAllDataNames( resultID );
     for ( unsigned int iDataName = 0; iDataName < dataNames.size(); iDataName++ )
     {
-        if ( ( strcmp( dataNames[iDataName].c_str(), "FC_Mach" )  != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "FC_Alpha" ) != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "FC_Beta" )  != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "WakeIter" ) != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "Mach" )     != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "Alpha" )    != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "Beta" )     != 0 )   )
+        if ( ( strncmp( dataNames[iDataName].c_str(), "FC_", 3 )   != 0 )  &
+                ( strcmp( dataNames[iDataName].c_str(), "WakeIter" ) != 0 )  &
+                ( strcmp( dataNames[iDataName].c_str(), "Mach" )     != 0 )  &
+                ( strcmp( dataNames[iDataName].c_str(), "Alpha" )    != 0 )  &
+                ( strcmp( dataNames[iDataName].c_str(), "Beta" )     != 0 )  &
+                ( strcmp( dataNames[iDataName].c_str(), "AnalysisMethod" ) != 0 ) )
         {
             m_ConvergenceYDataBrowser->add( dataNames[iDataName].c_str() );
         }
@@ -924,15 +956,24 @@ void VSPAEROPlotScreen::UpdateLoadDistYDataBrowser()
 
     string resultName = "VSPAERO_Load";
     string resultID = ResultsMgr.FindLatestResultsID( resultName );
-    vector < string > dataNames = ResultsMgr.GetAllDataNames( resultID );
-    for ( unsigned int iDataName = 0; iDataName < dataNames.size(); iDataName++ )
+    Results* res = ResultsMgr.FindResultsPtr( resultID );
+    if( res )
     {
-        if ( ( strcmp( dataNames[iDataName].c_str(), "FC_Mach" )  != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "FC_Alpha" ) != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "FC_Beta" )  != 0 )  &
-             ( strcmp( dataNames[iDataName].c_str(), "WingId" )   != 0 )   )
+        // Load distribution plots are supported only in certain modes (Panel method is not currently supported)
+        if ( res->FindPtr( "AnalysisMethod" )->GetInt( 0 ) == vsp::VSPAERO_ANALYSIS_METHOD::VORTEX_LATTICE )
         {
-            m_LoadDistYDataBrowser->add( dataNames[iDataName].c_str() );
+            vector < string > dataNames = ResultsMgr.GetAllDataNames( resultID );
+            for ( unsigned int iDataName = 0; iDataName < dataNames.size(); iDataName++ )
+            {
+                if ( ( strncmp( dataNames[iDataName].c_str(), "FC_", 3 )   != 0 )  &
+                        ( strcmp( dataNames[iDataName].c_str(), "FC_Alpha" ) != 0 )  &
+                        ( strcmp( dataNames[iDataName].c_str(), "FC_Beta" )  != 0 )  &
+                        ( strcmp( dataNames[iDataName].c_str(), "WingId" )   != 0 )  &
+                        ( strcmp( dataNames[iDataName].c_str(), "AnalysisMethod" ) != 0 ) )
+                {
+                    m_LoadDistYDataBrowser->add( dataNames[iDataName].c_str() );
+                }
+            }
         }
     }
 
@@ -983,10 +1024,9 @@ void VSPAEROPlotScreen::UpdateSweepXYDataBrowser()
     {
         for ( unsigned int iDataName = 0; iDataName < dataNames.size(); iDataName++ )
         {
-            if ( ( strcmp( dataNames[iDataName].c_str(), "FC_Mach" )  != 0 )  &
-                 ( strcmp( dataNames[iDataName].c_str(), "FC_Alpha" ) != 0 )  &
-                 ( strcmp( dataNames[iDataName].c_str(), "FC_Beta" )  != 0 )  &
-                 ( strcmp( dataNames[iDataName].c_str(), "WakeIter" ) != 0 )   )
+            if ( ( strncmp( dataNames[iDataName].c_str(), "FC_", 3 )   != 0 )  &
+                    ( strcmp( dataNames[iDataName].c_str(), "WakeIter" ) != 0 )  &
+                    ( strcmp( dataNames[iDataName].c_str(), "AnalysisMethod" ) != 0 ) )
             {
                 m_SweepXDataBrowser->add( dataNames[iDataName].c_str() );
                 m_SweepYDataBrowser->add( dataNames[iDataName].c_str() );
@@ -1243,18 +1283,20 @@ void VSPAEROPlotScreen::PlotConvergence( string resultID, vector <string> yDataS
         for ( int iDataSet = 0; iDataSet < ( int )yDataSetNames.size(); iDataSet++ )
         {
             yResultDataPtr = res->FindPtr( yDataSetNames[iDataSet] );
-            if ( ( xResultDataPtr != NULL ) & ( yResultDataPtr != NULL ) )
+            if ( ( xResultDataPtr != NULL ) && ( yResultDataPtr != NULL ) )
             {
-                //often the X Data may be a vector of integers, if so convert the data to doubles first
+                //  Get the X Data and explicitly set limits for interation # on X-Axis
                 vector <double> xDoubleData;
-                if ( xResultDataPtr->GetType() == vsp::INT_DATA )
+                if ( ( xResultDataPtr != NULL ) )
                 {
                     vector <int> tIntData = xResultDataPtr->GetIntData();
                     copy( tIntData.begin(), tIntData.end(), back_inserter( xDoubleData ) );
-                }
-                else
-                {
-                    xDoubleData = xResultDataPtr->GetDoubleData();
+
+                    if ( xDoubleData.size() > 0 )
+                    {
+                        m_ConvergencePlotCanvas->current_x()->minimum( xDoubleData[0] );
+                        m_ConvergencePlotCanvas->current_x()->maximum( xDoubleData[xDoubleData.size() - 1] );
+                    }
                 }
                 vector <double> yDoubleData;
                 if ( yResultDataPtr->GetType() == vsp::INT_DATA )
@@ -1270,41 +1312,57 @@ void VSPAEROPlotScreen::PlotConvergence( string resultID, vector <string> yDataS
                 //normalize the iteration data w.r.t. the final value
                 if ( m_ConvergenceYDataResidualToggle.GetFlButton()->value() == 1 )
                 {
-                    vector <double> diffY = yDoubleData;
-                    for ( int j = 1; j < ( int )yDoubleData.size(); j++ )
+                    double diffY;
+                    vector <double> tempY = yDoubleData;
+                    unsigned int j = 1;
+                    unsigned int jMax = ( unsigned int )tempY.size();
+                    while( j < jMax )
                     {
-                        diffY[j] = yDoubleData[j] - yDoubleData[j - 1];
-                    }
-                    for ( int j = 0; j < ( int )yDoubleData.size(); j++ )
-                    {
-                        yDoubleData[j] = log10( abs( ( diffY[j] ) ) + FLT_MIN ); //add FLT_MIN for negative inf protection on log10()
+                        diffY = tempY[j] - tempY[j - 1];
+                        if ( diffY != 0 ) // inf protection on log10()
+                        {
+                            yDoubleData[j] = log10( abs( diffY ) );
+                            j++;
+                        }
+                        else
+                        {
+                            //value did not change, eliminate the data point, this eliminates "jumping" on plot screen
+                            xDoubleData.erase( xDoubleData.begin() + j );
+                            yDoubleData.erase( yDoubleData.begin() + j );
+                            tempY.erase( tempY.begin() + j );
+                            jMax--;
+                        }
                     }
                 }
 
-                Fl_Color c = ColorWheel( m_ConvergenceiPlot, m_ConvergenceNLines );
-
-                //add the normalized data to the plot
-                AddPointLine( xDoubleData, yDoubleData, 2, c, 4, StyleWheel( m_ConvergenceiPlot ) );
-
-                char strbuf[100];
-                ConstructFlowConditionString( strbuf, res, false );
-                string legendstr = strbuf + string("; Y: ") + yDataSetNames[iDataSet];
-                m_ConvergenceLegendLayout.AddLegendEntry( legendstr, c );
-                m_ConvergenceiPlot++;
-
-                //Handle Axis limits
-                //  Set explicit limits for interation # on X-Axis
-                m_ConvergencePlotCanvas->current_x()->minimum( xDoubleData[0] );
-                m_ConvergencePlotCanvas->current_x()->maximum( xDoubleData[xDoubleData.size() - 1] );
-                //  Auto adjust and expand limits for Y-Axis
-                if ( m_ConvergenceYDataResidualToggle.GetFlButton()->value() == 1 )
+                if ( xDoubleData.size() == yDoubleData.size() )
                 {
-                    //Always show 0 on Y Axis if the data is normalized on a log scale
-                    UpdateSingleAxisLimits( m_ConvergencePlotCanvas->current_y(), yDoubleData, expandOnly, true );
+                    Fl_Color c = ColorWheel( m_ConvergenceiPlot, m_ConvergenceNLines );
+
+                    //add the normalized data to the plot
+                    AddPointLine( xDoubleData, yDoubleData, 2, c, 4, StyleWheel( m_ConvergenceiPlot ) );
+
+                    char strbuf[100];
+                    ConstructFlowConditionString( strbuf, res, false );
+                    string legendstr = strbuf + string( "; Y: " ) + yDataSetNames[iDataSet];
+                    m_ConvergenceLegendLayout.AddLegendEntry( legendstr, c );
+                    m_ConvergenceiPlot++;
+
+                    //Handle Axis limits
+                    //  Auto adjust and expand limits for Y-Axis
+                    if ( m_ConvergenceYDataResidualToggle.GetFlButton()->value() == 1 )
+                    {
+                        //Always show 0 on Y Axis if the data is normalized on a log scale
+                        UpdateSingleAxisLimits( m_ConvergencePlotCanvas->current_y(), yDoubleData, expandOnly, true );
+                    }
+                    else
+                    {
+                        UpdateSingleAxisLimits( m_ConvergencePlotCanvas->current_y(), yDoubleData, expandOnly, true );
+                    }
                 }
                 else
                 {
-                    UpdateSingleAxisLimits( m_ConvergencePlotCanvas->current_y(), yDoubleData, expandOnly, true );
+                    printf( "WARNING: xDoubleData.size() != yDoubleData.size()\n\tFile: %s \tLine:%d\n", __FILE__, __LINE__ );
                 }
 
                 expandOnly = true;
@@ -1409,7 +1467,7 @@ void VSPAEROPlotScreen::PlotLoadDistribution( string resultID, vector <string> y
 
                 char strbuf[100];
                 ConstructFlowConditionString( strbuf, res, false );
-                string legendstr = strbuf + string("; Y: ") + yDataSetNames[iDataSet];
+                string legendstr = strbuf + string( "; Y: " ) + yDataSetNames[iDataSet];
                 m_LoadDistLegendLayout.AddLegendEntry( legendstr, c );
                 m_LoadDistiPlot++;
             }
@@ -1455,10 +1513,10 @@ void VSPAEROPlotScreen::UpdateSingleAxisLimits( Ca_Axis_ * tAxis, vector <double
 
 
     // Infinity protection - bounds the magnitude of dataMin and dataMax to single precision magnitudes
-    dataMin = std::min(dataMin,(double)FLT_MAX);
-    dataMin = std::max(dataMin,(double)-FLT_MAX);
-    dataMax = std::min(dataMax,(double)FLT_MAX);
-    dataMax = std::max(dataMax,(double)-FLT_MAX);
+    dataMin = std::min( dataMin, ( double )FLT_MAX );
+    dataMin = std::max( dataMin, ( double ) - FLT_MAX );
+    dataMax = std::min( dataMax, ( double )FLT_MAX );
+    dataMax = std::max( dataMax, ( double ) - FLT_MAX );
 
     // Calculate min and max number magnitudes or "scale"
     double axisMin, axisMax;

@@ -347,7 +347,7 @@ void ProcessUtil::StartThread( LPTHREAD_START_ROUTINE threadfun, LPVOID data )
     if(m_Handle==NULL)
     {
         //THREAD CREATION FAILED
-        printf("ERROR: Thread creation failed\n");
+        printf("ERROR: Thread creation failed \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
     }
 }
 #else
@@ -361,6 +361,7 @@ void ProcessUtil::StartThread( void *(*threadfun)( void *data ), void *data )
 
 void ProcessUtil::ReadStdoutPipe(char * bufptr, int bufsize, unsigned long * nreadptr )
 {
+    bufptr[0] = 0;
 #ifdef WIN32
     ReadFile( m_StdoutPipe[PIPE_READ], bufptr, bufsize, nreadptr, NULL);
 #else

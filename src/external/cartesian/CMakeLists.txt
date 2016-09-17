@@ -9,13 +9,14 @@ Cartesian.H
 
 INCLUDE_DIRECTORIES( ${FLTK_INCLUDE_DIR} )
 
-ADD_EXECUTABLE( Ca_Example
-example.cpp
+# ADD_EXECUTABLE( Ca_Example
+# example.cpp
+# )
+#
+# TARGET_LINK_LIBRARIES( Ca_Example
+# 	cartesian
+# 	${FLTK_LIBRARIES}
+# )
+TARGET LINK_LIBRARIES ( 
+            ${RHEL_LIBRARIES}
 )
-
-TARGET_LINK_LIBRARIES( Ca_Example
-	cartesian
-	${FLTK_LIBRARIES}
-	${RHEL_LIBRARIES}
-)
-

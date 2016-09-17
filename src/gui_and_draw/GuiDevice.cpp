@@ -1180,6 +1180,7 @@ void ToggleRadioGroup::Init( VspScreen* screen )
 void ToggleRadioGroup::AddButton( Fl_Button* button )
 {
     assert( button );
+    AddWidget(button);
     m_ButtonVec.push_back( button );
     button->callback( StaticDeviceCB, this );
 }
@@ -2550,7 +2551,7 @@ void ParmTreePicker::UpdateParmTree()
 
                         if ( groupids.size() > 1 )
                         {
-                            printf("Error: multiple same-name groups where there shouldn't be any.\n");
+                            printf("Error: multiple same-name groups where there shouldn't be any. \n\tFile: %s \tLine:%d\n",__FILE__,__LINE__);
                         }
 
                         AddParmEntry( pID, (*cit).second, (*cit).second.m_GroupVec[groupid].m_TreeItemPtr );
